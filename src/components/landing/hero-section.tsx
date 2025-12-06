@@ -90,7 +90,7 @@ const Hero = () => {
           style={{ animationDelay: "0.5s" }}
         >
           <div className="relative mx-auto max-w-5xl">
-            <div className="absolute -bottom-20 left-0 right-0 h-44 bg-gradient-to-b from-transparent to-white pointer-events-none" />
+            <div className="bg-gradient-to-b from-transparent to-white pointer-events-none" />
 
             <div className="rounded-2xl overflow-hidden shadow-2xl border border-border/50">
               <img
