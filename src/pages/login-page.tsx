@@ -1,26 +1,58 @@
-import { ArrowRight, Eye, EyeOff, Lock, Mail, Rocket } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  Rocket,
+  AlertCircle,
+} from "lucide-react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Label } from "../components/ui/label";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
+import { useAuth } from "../context/AuthContext";
+import { Alert, AlertDescription } from "../components/ui/alert";
 
 const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const { loginWithEmailPassword, loginWithGoogle, loading, error, user } =
+    useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.success("Welcome back!");
-    navigate("/dashboard");
-    setIsLoading(false);
+  const handleEmailPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!email || !password) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    const result = await loginWithEmailPassword(email, password);
+
+    if (result.success) {
+      toast.success("Welcome back!");
+    } else {
+      toast.error(result.error || "Login failed");
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    const result = await loginWithGoogle();
+
+    if (!result.success) {
+      toast.error(result.error || "Google login failed");
+    }
   };
 
   return (
@@ -39,7 +71,14 @@ const LoginPage = () => {
             Sign in to your account to continue
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleEmailPasswordLogin} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
@@ -95,9 +134,9 @@ const LoginPage = () => {
               type="submit"
               className="w-full "
               variant="hero"
-              disabled={isLoading}
+              disabled={loading}
             >
-              {isLoading ? "Signing in..." : "Sign in"}
+              {loading ? "Signing in..." : "Sign in"}
               <ArrowRight className="w-4 h-4" />
             </Button>
           </form>
@@ -114,7 +153,13 @@ const LoginPage = () => {
           </div>
 
           <div>
-            <Button variant="outline" className="w-full">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleGoogleLogin}
+              disabled={loading}
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 x="0px"

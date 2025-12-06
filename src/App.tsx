@@ -18,6 +18,9 @@ import CompetitiveAnalysisPage from "./pages/competitive-analysis-page";
 import BacklogPage from "./pages/backlog-page";
 import Settings from "./pages/settings-page";
 import NotFound from "./pages/not-found";
+import ForgotPasswordPage from "./pages/forgot-password-page";
+import ResetPasswordPage from "./pages/reset-password-page";
+import AuthCallback from "./pages/auth-callback";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +51,11 @@ const App = () => {
               />
               <Route path="/dashboard/backlog" element={<BacklogPage />} />
               <Route path="/dashboard/settings" element={<Settings />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
