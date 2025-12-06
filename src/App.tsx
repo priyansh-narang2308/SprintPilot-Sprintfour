@@ -21,6 +21,7 @@ import NotFound from "./pages/not-found";
 import ForgotPasswordPage from "./pages/forgot-password-page";
 import ResetPasswordPage from "./pages/reset-password-page";
 import AuthCallback from "./pages/auth-callback";
+import RequireNoAuth from "./components/RequireNoAuth";
 
 const queryClient = new QueryClient();
 
@@ -33,8 +34,22 @@ const App = () => {
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignUpPage />} />
+              <Route
+                path="/login"
+                element={
+                  <RequireNoAuth>
+                    <LoginPage />
+                  </RequireNoAuth>
+                }
+              />
+              <Route
+                path="/signup"
+                element={
+                  <RequireNoAuth>
+                    <SignUpPage />
+                  </RequireNoAuth>
+                }
+              />
               <Route path="/onboarding" element={<OnBoardingPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/prd" element={<PRDBuilderPage />} />
