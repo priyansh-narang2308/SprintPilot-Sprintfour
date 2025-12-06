@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
@@ -10,18 +10,25 @@ import {
   BarChart3,
   ListTodo,
   Settings,
-  HelpCircle,
-  Search,
-  Bell,
-  Plus,
   ChevronLeft,
   ChevronRight,
   Rocket,
   LogOut,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "sonner";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -37,6 +44,31 @@ const navigation = [
   },
   { name: "Backlog", href: "/dashboard/backlog", icon: ListTodo },
 ];
+
+const SignOutButton = () => {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    const { success, error } = await logout();
+
+    if (success) {
+      toast.success("Signed out");
+      navigate("/login");
+    } else {
+      toast.error(error ?? "Failed to sign out");
+    }
+  };
+
+  return (
+    <Button
+      onClick={handleLogout}
+      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+    >
+      Sign out
+    </Button>
+  );
+};
 
 const bottomNav = [
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
@@ -114,15 +146,38 @@ const DashboardLayout = ({ children, title }: DashboardLayoutProps) => {
               {!collapsed && <span>{item.name}</span>}
             </Link>
           ))}
-          <button
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-destructive hover:bg-destructive/10 transition-all",
-              collapsed && "justify-center px-0"
-            )}
-          >
-            <LogOut className="w-5 h-5 shrink-0" />
-            {!collapsed && <span>Sign out</span>}
-          </button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <button
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-destructive hover:bg-destructive/10 transition-all",
+                  collapsed && "justify-center px-0"
+                )}
+              >
+                <LogOut className="w-5 h-5 shrink-0" />
+                {!collapsed && <span>Sign out</span>}
+              </button>
+            </DialogTrigger>
+
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Sign out</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to sign out? You'll need to log in again
+                  to continue.
+                </DialogDescription>
+              </DialogHeader>
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancel</Button>
+                </DialogClose>
+
+                {/* Our logout handler */}
+                <SignOutButton />
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </aside>
 
