@@ -1,5 +1,6 @@
 import { Helmet } from "react-helmet-async";
 import Navbar from "../components/landing/navbar";
+import Hero from "../components/landing/hero-section";
 
 const HomePage = () => {
   return (
@@ -13,6 +14,9 @@ const HomePage = () => {
       </Helmet>
       <div className="min-h-screen bg-background">
         <Navbar />
+        <main>
+          <Hero />
+        </main>
       </div>
     </>
   );
