@@ -34,14 +34,3 @@ Quick permissive policy examples (not for production):
   CREATE POLICY "Allow authenticated deletes" ON public.personas
   FOR DELETE USING (auth.role() = 'authenticated');
 
-Testing
-
-- After running the SQL and ensuring RLS/policies are configured, open the app (npm run dev) and try the "Create Persona" button. New entries should appear in the UI and in your Supabase table.
-
-Next phases
-
-1. Improve auth-aware policies (limit rows to owner.id, etc.).
-2. Add server-side validations or API endpoints (Edge Functions) to protect write operations.
-3. Add pagination, searching and a proper edit modal with validation.
-
-If you'd like, I can run a quick type/lint check and then start the dev server to visually verify the flow. Would you like me to do that now?
