@@ -2,6 +2,7 @@ import { Helmet } from "react-helmet-async";
 import Navbar from "../components/landing/navbar";
 import Hero from "../components/landing/hero-section";
 import Features from "../components/landing/feature-section";
+import HowItWorks from "../components/landing/how-it-works";
 
 const HomePage = () => {
   return (
@@ -18,6 +19,7 @@ const HomePage = () => {
         <main>
           <Hero />
           <Features />
+          <HowItWorks/>
         </main>
       </div>
     </>
