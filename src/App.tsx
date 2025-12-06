@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster as Sonner } from "./components/ui/sonner";
-
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
 import HomePage from "./pages/home-page";
 import LoginPage from "./pages/login-page";
 import SignUpPage from "./pages/signup-page";
