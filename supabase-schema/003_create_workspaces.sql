@@ -1,5 +1,3 @@
--- 003_create_workspaces.sql
--- Create workspaces table and add workspace_id to prds
 
 create table if not exists workspaces (
     id uuid primary key default gen_random_uuid (),
@@ -15,4 +13,3 @@ add column if not exists workspace_id uuid references workspaces (id) on delete 
 -- index for workspace lookup
 create index if not exists idx_prds_workspace_id on prds (workspace_id);
 
--- Note: When creating a workspace the UI will delete PRDs that belonged to previous workspaces for the user.

@@ -1,5 +1,3 @@
--- 004_create_tasks.sql
--- Create tasks table for backlog management
 
 create table if not exists tasks (
     id uuid primary key default gen_random_uuid(),
