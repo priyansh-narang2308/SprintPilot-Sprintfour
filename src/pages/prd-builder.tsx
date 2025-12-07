@@ -1,6 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from "react";
 import DashboardLayout from "../components/dashboard/dashboard-layout";
 import { Button } from "../components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 import { Plus, Download, Copy as CopyIcon } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { generateCompletePRD } from "../lib/geiminiApi";
@@ -21,7 +30,6 @@ const PRDBuilderPage: React.FC = () => {
   const [generating, setGenerating] = useState(false);
   const [selected, setSelected] = useState<PRD | null>(null);
 
-  // form fields for AI inputs
   const [productName, setProductName] = useState("");
   const [productDescription, setProductDescription] = useState("");
   const [audience, setAudience] = useState("");
@@ -30,15 +38,74 @@ const PRDBuilderPage: React.FC = () => {
 
   useEffect(() => {
     fetchPRDs();
+    fetchWorkspaces();
   }, []);
+
+  const [workspaces, setWorkspaces] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<{
+    id: string;
+    name: string;
+  } | null>(() => {
+    try {
+      const raw = localStorage.getItem("current_workspace");
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const fetchWorkspaces = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("workspaces")
+        .select("id,name")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setWorkspaces((data as any) || []);
+    } catch (err) {
+      console.error("Failed to fetch workspaces", err);
+    }
+  };
+
+  const selectWorkspace = (ws: { id: string; name: string } | null) => {
+    setSelectedWorkspace(ws);
+    if (ws) localStorage.setItem("current_workspace", JSON.stringify(ws));
+    else localStorage.removeItem("current_workspace");
+    // refetch PRDs scoped to the workspace
+    fetchPRDs();
+  };
+
+  const createWorkspace = async () => {
+    const name = window.prompt("New workspace name");
+    if (!name) return;
+    try {
+      const { data, error } = await supabase
+        .from("workspaces")
+        .insert({ name })
+        .select("id,name")
+        .single();
+      if (error) throw error;
+      await fetchWorkspaces();
+      selectWorkspace(data as { id: string; name: string });
+    } catch (err) {
+      console.error("Create workspace failed", err);
+    }
+  };
 
   const fetchPRDs = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const stored = localStorage.getItem("current_workspace");
+      const workspace = stored ? JSON.parse(stored) : null;
+      let query = supabase
         .from("prds")
         .select("id,title,description,content,created_at")
         .order("created_at", { ascending: false });
+      if (workspace && workspace.id)
+        query = query.eq("workspace_id", workspace.id);
+      const { data, error } = await query;
       if (error) throw error;
       setPrds((data as PRD[]) || []);
     } catch (err) {
@@ -64,9 +131,18 @@ const PRDBuilderPage: React.FC = () => {
       const md = await generateCompletePRD(prompt);
       const title =
         productName || (productDescription || "Generated PRD").slice(0, 40);
+      const stored = localStorage.getItem("current_workspace");
+      const workspace = stored ? JSON.parse(stored) : null;
+      const insertPayload: Record<string, unknown> = {
+        title,
+        description: productDescription,
+        content: md,
+      };
+      if (workspace && workspace.id) insertPayload.workspace_id = workspace.id;
+
       const { data, error } = await supabase
         .from("prds")
-        .insert({ title, description: productDescription, content: md })
+        .insert(insertPayload)
         .select("id,title,description,content,created_at")
         .single();
       if (error) throw error;
@@ -125,7 +201,40 @@ const PRDBuilderPage: React.FC = () => {
     <DashboardLayout title="PRD Builder">
       <div className="p-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-semibold">PRD Builder</h1>
+          <div>
+            <h1 className="text-2xl font-semibold">PRD Builder</h1>
+            <div className="mt-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    {selectedWorkspace?.name || "Select workspace"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+                  {workspaces.length === 0 ? (
+                    <DropdownMenuItem onSelect={() => {}}>
+                      No workspaces
+                    </DropdownMenuItem>
+                  ) : (
+                    workspaces.map((w) => (
+                      <DropdownMenuItem
+                        key={w.id}
+                        onSelect={() => selectWorkspace(w)}
+                      >
+                        {w.name}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={createWorkspace}>
+                    Create workspace
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={fetchPRDs}>
               Refresh
