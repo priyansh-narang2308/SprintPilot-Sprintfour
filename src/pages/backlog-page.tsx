@@ -43,7 +43,6 @@ import {
   Circle,
   Clock,
   Download,
-  Filter,
   MoreHorizontal,
   Plus,
   Search,
@@ -56,6 +55,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { toast } from 'sonner'
 import { cn } from '../lib/utils'
+import { generateTasks, type GeneratedTask } from '../lib/geiminiApi'
+import { createJiraIssue, testJiraConnection, type JiraConfig } from '../lib/jiraApi'
 
 type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 type TaskPriority = 'low' | 'medium' | 'high'
@@ -93,6 +94,24 @@ const BacklogPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null)
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null)
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [generatingTasks, setGeneratingTasks] = useState(false)
+  const [generatedTasks, setGeneratedTasks] = useState<GeneratedTask[]>([])
+  const [selectedTaskIndices, setSelectedTaskIndices] = useState<Set<number>>(new Set())
+  const [creatingTasks, setCreatingTasks] = useState(false)
+  const [jiraModalOpen, setJiraModalOpen] = useState(false)
+  const [jiraConfig, setJiraConfig] = useState<JiraConfig>({
+    domain: '',
+    email: '',
+    apiToken: '',
+    projectKey: '',
+  })
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [exportingToJira, setExportingToJira] = useState(false)
+  const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 })
+  const [exportResults, setExportResults] = useState<Array<{ task: Task; success: boolean; jiraKey?: string; error?: string }>>([])
 
   const [formData, setFormData] = useState({
     title: '',
@@ -105,15 +124,59 @@ const BacklogPage = () => {
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-
-    const stored = localStorage.getItem("current_workspace")
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        setSelectedWorkspace(parsed)
-      } catch (e) {
-        console.error("Failed to parse workspace", e)
+    const loadWorkspace = () => {
+      const stored = localStorage.getItem("current_workspace")
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          setSelectedWorkspace(parsed)
+        } catch (e) {
+          console.error("Failed to parse workspace", e)
+        }
       }
+    }
+
+    loadWorkspace()
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'current_workspace') {
+        if (e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue)
+            setSelectedWorkspace(parsed)
+            setTasks([])
+          } catch (e) {
+            console.error("Failed to parse workspace", e)
+          }
+        } else {
+          setSelectedWorkspace(null)
+          setTasks([])
+        }
+      }
+    }
+
+    const handleWorkspaceChange = () => {
+      const stored = localStorage.getItem("current_workspace")
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          setSelectedWorkspace(parsed)
+          setTasks([])
+        } catch (e) {
+          console.error("Failed to parse workspace", e)
+        }
+      } else {
+        setSelectedWorkspace(null)
+        setTasks([])
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('workspace-changed', handleWorkspaceChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('workspace-changed', handleWorkspaceChange)
     }
   }, [])
 
@@ -121,10 +184,14 @@ const BacklogPage = () => {
     if (user && selectedWorkspace) {
       fetchTasks()
     } else if (user && !selectedWorkspace) {
+      setTasks([])
+      setLoading(false)
+    } else {
+      setTasks([])
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, selectedWorkspace])
+  }, [user, selectedWorkspace?.id])
 
   const fetchTasks = async () => {
     if (!user || !selectedWorkspace) return
@@ -282,23 +349,229 @@ const BacklogPage = () => {
   }
 
   const handleCheckboxComplete = async (task: Task) => {
-    setDeletingTaskId(task.id)
+    const newStatus: TaskStatus = task.status === 'done' ? 'todo' : 'done'
+
+    setUpdatingTaskId(task.id)
     try {
       const { error } = await supabase
         .from("tasks")
-        .delete()
+        .update({ status: newStatus })
         .eq("id", task.id)
 
       if (error) throw error
 
-      toast.success("Task completed and removed")
+      toast.success(newStatus === 'done' ? "Task marked as done!" : "Task reopened")
       await fetchTasks()
     } catch (err) {
-      console.error("Failed to complete task", err)
-      const errorMessage = err instanceof Error ? err.message : "Failed to complete task"
+      console.error("Failed to update task status", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to update task"
       toast.error(errorMessage)
     } finally {
-      setDeletingTaskId(null)
+      setUpdatingTaskId(null)
+    }
+  }
+
+  const handleGenerateTasks = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error("Please enter a prompt to generate tasks")
+      return
+    }
+
+    if (!selectedWorkspace) {
+      toast.error("Please select a workspace first")
+      return
+    }
+
+    setGeneratingTasks(true)
+    setGeneratedTasks([])
+    setSelectedTaskIndices(new Set())
+
+    try {
+      const tasks = await generateTasks(aiPrompt)
+      setGeneratedTasks(tasks)
+
+      setSelectedTaskIndices(new Set(tasks.map((_, index) => index)))
+      toast.success(`Generated ${tasks.length} tasks! Review and select which ones to add.`)
+    } catch (err) {
+      console.error("Failed to generate tasks", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to generate tasks"
+      toast.error(errorMessage)
+    } finally {
+      setGeneratingTasks(false)
+    }
+  }
+
+  const handleToggleTaskSelection = (index: number) => {
+    const newSelected = new Set(selectedTaskIndices)
+    if (newSelected.has(index)) {
+      newSelected.delete(index)
+    } else {
+      newSelected.add(index)
+    }
+    setSelectedTaskIndices(newSelected)
+  }
+
+  const handleSelectAllTasks = () => {
+    if (selectedTaskIndices.size === generatedTasks.length) {
+      setSelectedTaskIndices(new Set())
+    } else {
+      setSelectedTaskIndices(new Set(generatedTasks.map((_, index) => index)))
+    }
+  }
+
+  const handleCreateSelectedTasks = async () => {
+    if (!user || !selectedWorkspace) {
+      toast.error("Missing required information")
+      return
+    }
+
+    if (selectedTaskIndices.size === 0) {
+      toast.error("Please select at least one task to create")
+      return
+    }
+
+    setCreatingTasks(true)
+    try {
+      const tasksToCreate = generatedTasks.filter((_, index) => selectedTaskIndices.has(index))
+
+      const tasksData = tasksToCreate.map(task => ({
+        title: task.title.trim(),
+        description: task.description.trim() || null,
+        status: task.status,
+        priority: task.priority,
+        assignee: task.assignee?.trim() || null,
+        tags: task.tags || [],
+        workspace_id: selectedWorkspace.id,
+        user_id: user.id,
+      }))
+
+      const { error } = await supabase
+        .from("tasks")
+        .insert(tasksData)
+
+      if (error) throw error
+
+      toast.success(`Successfully created ${tasksToCreate.length} task(s)!`)
+      setAiModalOpen(false)
+      setAiPrompt('')
+      setGeneratedTasks([])
+      setSelectedTaskIndices(new Set())
+      await fetchTasks()
+    } catch (err) {
+      console.error("Failed to create tasks", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to create tasks"
+      toast.error(errorMessage)
+    } finally {
+      setCreatingTasks(false)
+    }
+  }
+
+  const handleTestJiraConnection = async () => {
+    if (!jiraConfig.domain || !jiraConfig.email || !jiraConfig.apiToken || !jiraConfig.projectKey) {
+      toast.error("Please fill in all Jira configuration fields")
+      return
+    }
+
+    setTestingConnection(true)
+    try {
+      const isValid = await testJiraConnection(jiraConfig)
+      if (isValid) {
+        toast.success("Jira connection successful!")
+        // Save config to localStorage
+        localStorage.setItem('jira_config', JSON.stringify(jiraConfig))
+      } else {
+        toast.error("Failed to connect to Jira. Please check your credentials.")
+      }
+    } catch (err) {
+      console.error("Jira connection test failed", err)
+      const errorMessage = err instanceof Error ? err.message : "Connection test failed"
+      toast.error(errorMessage)
+    } finally {
+      setTestingConnection(false)
+    }
+  }
+
+  const handleExportToJira = async () => {
+    if (!jiraConfig.domain || !jiraConfig.email || !jiraConfig.apiToken || !jiraConfig.projectKey) {
+      toast.error("Please configure Jira settings first")
+      return
+    }
+
+    // Get tasks to export (filtered tasks or all tasks based on current filter)
+    const tasksToExport = filteredTasks.length > 0 ? filteredTasks : tasks
+
+    if (tasksToExport.length === 0) {
+      toast.error("No tasks to export")
+      return
+    }
+
+    setExportingToJira(true)
+    setExportProgress({ current: 0, total: tasksToExport.length })
+    setExportResults([])
+
+    const results: Array<{ task: Task; success: boolean; jiraKey?: string; error?: string }> = []
+
+    try {
+      // Test connection first
+      const isValid = await testJiraConnection(jiraConfig)
+      if (!isValid) {
+        throw new Error("Jira connection failed. Please check your credentials.")
+      }
+
+      // Save config
+      localStorage.setItem('jira_config', JSON.stringify(jiraConfig))
+
+      // Export tasks one by one
+      for (let i = 0; i < tasksToExport.length; i++) {
+        const task = tasksToExport[i]
+        setExportProgress({ current: i + 1, total: tasksToExport.length })
+
+        try {
+          const jiraIssue = await createJiraIssue(jiraConfig, {
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            priority: task.priority,
+            assignee: task.assignee,
+            tags: task.tags,
+          })
+
+          results.push({
+            task,
+            success: true,
+            jiraKey: jiraIssue.key,
+          })
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : "Unknown error"
+          results.push({
+            task,
+            success: false,
+            error: errorMessage,
+          })
+        }
+
+        // Small delay to avoid rate limiting
+        if (i < tasksToExport.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+
+      setExportResults(results)
+      const successCount = results.filter(r => r.success).length
+      const failCount = results.filter(r => !r.success).length
+
+      if (successCount > 0) {
+        toast.success(`Successfully exported ${successCount} task(s) to Jira!`)
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount} task(s) failed to export. Check details below.`)
+      }
+    } catch (err) {
+      console.error("Export to Jira failed", err)
+      const errorMessage = err instanceof Error ? err.message : "Export failed"
+      toast.error(errorMessage)
+    } finally {
+      setExportingToJira(false)
     }
   }
 
@@ -383,11 +656,22 @@ const BacklogPage = () => {
             <p className="text-muted-foreground text-sm">Manage your development tasks</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="hidden sm:flex">
+            <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => {
+              // Load saved config from localStorage
+              const saved = localStorage.getItem('jira_config')
+              if (saved) {
+                try {
+                  setJiraConfig(JSON.parse(saved))
+                } catch (e) {
+                  console.error('Failed to load Jira config', e)
+                }
+              }
+              setJiraModalOpen(true)
+            }}>
               <Download className="w-4 h-4 mr-2" />
               Export to Jira
             </Button>
-            <Button variant="outline" size="sm" className="hidden sm:flex">
+            <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => setAiModalOpen(true)}>
               <Wand2 className="w-4 h-4 mr-2" />
               AI Generate
             </Button>
@@ -422,7 +706,11 @@ const BacklogPage = () => {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {status === "all" ? "All" : status.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
+                {status === "all"
+                  ? "All"
+                  : status === "done"
+                    ? "Done"
+                    : status.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
                 <span className="ml-1.5 text-xs opacity-60">{count}</span>
               </button>
             ))}
@@ -460,29 +748,38 @@ const BacklogPage = () => {
                   {filteredTasks.map((task) => {
                     const statusColor = statusConfig[task.status].color
                     const isDeleting = deletingTaskId === task.id
+                    const isUpdating = updatingTaskId === task.id
+                    const isDone = task.status === 'done'
 
                     return (
                       <tr
                         key={task.id}
                         className={cn(
                           "border-b border-border/50 hover:bg-muted/50 transition-all group",
-                          isDeleting && "opacity-50"
+                          (isDeleting || isUpdating) && "opacity-50",
+                          isDone && "bg-muted/20"
                         )}
                       >
                         <td className="p-3 sm:p-4">
                           <Checkbox
-                            checked={false}
+                            checked={isDone}
                             onCheckedChange={() => handleCheckboxComplete(task)}
-                            disabled={isDeleting}
+                            disabled={isDeleting || isUpdating}
                             className="cursor-pointer"
                           />
                         </td>
                         <td className="p-3 sm:p-4">
-                          <p className={cn("font-medium text-xs sm:text-sm", isDeleting && "line-through text-muted-foreground")}>
+                          <p className={cn(
+                            "font-medium text-xs sm:text-sm transition-all",
+                            isDone && "line-through text-muted-foreground"
+                          )}>
                             {task.title}
                           </p>
                           {task.description && (
-                            <p className={cn("text-xs text-muted-foreground mt-0.5 line-clamp-1", isDeleting && "line-through")}>
+                            <p className={cn(
+                              "text-xs text-muted-foreground mt-0.5 line-clamp-1 transition-all",
+                              isDone && "line-through"
+                            )}>
                               {task.description}
                             </p>
                           )}
@@ -534,9 +831,9 @@ const BacklogPage = () => {
                             <DropdownMenuTrigger asChild>
                               <button
                                 className="p-1.5 rounded-lg hover:bg-muted opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                                disabled={isDeleting}
+                                disabled={isDeleting || isUpdating}
                               >
-                                {isDeleting ? (
+                                {(isDeleting || isUpdating) ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
                                   <MoreHorizontal className="w-4 h-4" />
@@ -736,7 +1033,6 @@ const BacklogPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -767,6 +1063,438 @@ const BacklogPage = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={aiModalOpen} onOpenChange={(open) => {
+        setAiModalOpen(open)
+        if (!open) {
+          setAiPrompt('')
+          setGeneratedTasks([])
+          setSelectedTaskIndices(new Set())
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5" />
+              AI Generate Tasks
+            </DialogTitle>
+            <DialogDescription>
+              Describe your project or feature, and AI will generate a comprehensive task breakdown for you.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="ai-prompt">
+                Project Description <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="ai-prompt"
+                placeholder="e.g., Build a user authentication system with email/password and OAuth login, password reset functionality, and user profile management..."
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                rows={4}
+                disabled={generatingTasks || creatingTasks}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                Be specific about features, requirements, and scope for better task generation.
+              </p>
+            </div>
+
+            {generatedTasks.length === 0 && (
+              <Button
+                onClick={handleGenerateTasks}
+                disabled={!aiPrompt.trim() || generatingTasks}
+                variant="hero"
+                className="w-full"
+              >
+                {generatingTasks ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating Tasks...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Generate Tasks
+                  </>
+                )}
+              </Button>
+            )}
+
+            {generatedTasks.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">Generated Tasks ({generatedTasks.length})</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Select the tasks you want to add to your backlog
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllTasks}
+                  >
+                    {selectedTaskIndices.size === generatedTasks.length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
+
+                <div className="space-y-2 max-h-96 overflow-y-auto border rounded-lg p-4">
+                  {generatedTasks.map((task, index) => {
+                    const isSelected = selectedTaskIndices.has(index)
+                    const statusColor = statusConfig[task.status].color
+
+                    return (
+                      <div
+                        key={index}
+                        className={cn(
+                          "border rounded-lg p-4 transition-all cursor-pointer hover:bg-muted/50",
+                          isSelected && "border-primary bg-primary/5"
+                        )}
+                        onClick={() => handleToggleTaskSelection(index)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handleToggleTaskSelection(index)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className={cn("font-medium text-sm", isSelected && "text-primary")}>
+                                  {task.title}
+                                </p>
+                                {task.description && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {task.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={cn("text-xs px-2 py-0.5 rounded", statusColor)}>
+                                {statusConfig[task.status].label}
+                              </span>
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded",
+                                task.priority === "high"
+                                  ? "bg-destructive/10 text-destructive"
+                                  : task.priority === "medium"
+                                    ? "bg-chart-3/10 text-chart-3"
+                                    : "bg-muted text-muted-foreground"
+                              )}>
+                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                              </span>
+                              {task.assignee && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                  {task.assignee}
+                                </span>
+                              )}
+                              {task.tags.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {task.tags.map((tag, tagIndex) => (
+                                    <span key={tagIndex} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedTaskIndices.size} of {generatedTasks.length} tasks selected
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setAiPrompt('')
+                        setGeneratedTasks([])
+                        setSelectedTaskIndices(new Set())
+                      }}
+                      disabled={creatingTasks}
+                    >
+                      Generate New
+                    </Button>
+                    <Button
+                      variant="hero"
+                      onClick={handleCreateSelectedTasks}
+                      disabled={selectedTaskIndices.size === 0 || creatingTasks}
+                    >
+                      {creatingTasks ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create {selectedTaskIndices.size} Task{selectedTaskIndices.size !== 1 ? 's' : ''}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAiModalOpen(false)
+                setAiPrompt('')
+                setGeneratedTasks([])
+                setSelectedTaskIndices(new Set())
+              }}
+              disabled={generatingTasks || creatingTasks}
+            >
+              {generatedTasks.length > 0 ? 'Cancel' : 'Close'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Jira Export Modal */}
+      <Dialog open={jiraModalOpen} onOpenChange={(open) => {
+        setJiraModalOpen(open)
+        if (!open) {
+          setExportResults([])
+          setExportProgress({ current: 0, total: 0 })
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-5 h-5" />
+              Export to Jira
+            </DialogTitle>
+            <DialogDescription>
+              Configure your Jira settings and export tasks to your Jira project.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Jira Configuration */}
+            <div className="space-y-4 border-b pb-4">
+              <h3 className="font-semibold text-sm">Jira Configuration</h3>
+
+              <div className="space-y-2">
+                <Label htmlFor="jira-domain">
+                  Jira Domain <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="jira-domain"
+                  placeholder="yourcompany.atlassian.net"
+                  value={jiraConfig.domain}
+                  onChange={(e) => setJiraConfig({ ...jiraConfig, domain: e.target.value })}
+                  disabled={exportingToJira}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your Jira domain (e.g., company.atlassian.net)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="jira-email">
+                  Email <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="jira-email"
+                  type="email"
+                  placeholder="your.email@company.com"
+                  value={jiraConfig.email}
+                  onChange={(e) => setJiraConfig({ ...jiraConfig, email: e.target.value })}
+                  disabled={exportingToJira}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your Jira account email
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="jira-token">
+                  API Token <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="jira-token"
+                  type="password"
+                  placeholder="Enter your Jira API token"
+                  value={jiraConfig.apiToken}
+                  onChange={(e) => setJiraConfig({ ...jiraConfig, apiToken: e.target.value })}
+                  disabled={exportingToJira}
+                />
+                <p className="text-xs text-muted-foreground">
+                  <a
+                    href="https://id.atlassian.com/manage-profile/security/api-tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Create an API token
+                  </a>
+                  {' '}in your Atlassian account settings
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="jira-project">
+                  Project Key <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="jira-project"
+                  placeholder="PROJ"
+                  value={jiraConfig.projectKey}
+                  onChange={(e) => setJiraConfig({ ...jiraConfig, projectKey: e.target.value.toUpperCase() })}
+                  disabled={exportingToJira}
+                  maxLength={10}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your Jira project key (e.g., PROJ, DEV, TASK)
+                </p>
+              </div>
+
+              <Button
+                variant="outline"
+                onClick={handleTestJiraConnection}
+                disabled={testingConnection || exportingToJira || !jiraConfig.domain || !jiraConfig.email || !jiraConfig.apiToken || !jiraConfig.projectKey}
+                className="w-full"
+              >
+                {testingConnection ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Testing Connection...
+                  </>
+                ) : (
+                  <>
+                    Test Connection
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Export Section */}
+            {exportResults.length === 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">Export Tasks</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {filteredTasks.length} task(s) will be exported to Jira
+                    </p>
+                  </div>
+                </div>
+
+                {exportingToJira && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Exporting tasks...</span>
+                      <span>{exportProgress.current} / {exportProgress.total}</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Export Results */}
+            {exportResults.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">Export Results</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {exportResults.filter(r => r.success).length} succeeded, {exportResults.filter(r => !r.success).length} failed
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-4">
+                  {exportResults.map((result, index) => (
+                    <div
+                      key={index}
+                      className={cn(
+                        "flex items-start justify-between p-3 rounded-lg border",
+                        result.success ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                      )}
+                    >
+                      <div className="flex-1">
+                        <p className={cn("text-sm font-medium", result.success ? "text-green-900 dark:text-green-100" : "text-red-900 dark:text-red-100")}>
+                          {result.task.title}
+                        </p>
+                        {result.success && result.jiraKey && (
+                          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                            Created as: {result.jiraKey}
+                          </p>
+                        )}
+                        {!result.success && result.error && (
+                          <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                            Error: {result.error}
+                          </p>
+                        )}
+                      </div>
+                      {result.success ? (
+                        <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setJiraModalOpen(false)
+                setExportResults([])
+                setExportProgress({ current: 0, total: 0 })
+              }}
+              disabled={exportingToJira}
+            >
+              Close
+            </Button>
+            {exportResults.length === 0 && (
+              <Button
+                variant="hero"
+                onClick={handleExportToJira}
+                disabled={exportingToJira || !jiraConfig.domain || !jiraConfig.email || !jiraConfig.apiToken || !jiraConfig.projectKey || filteredTasks.length === 0}
+              >
+                {exportingToJira ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export {filteredTasks.length} Task{filteredTasks.length !== 1 ? 's' : ''}
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

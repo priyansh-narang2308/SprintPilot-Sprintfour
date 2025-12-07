@@ -268,6 +268,7 @@ const DashboardLayout = ({ children, title }: DashboardLayoutProps) => {
                             "current_workspace",
                             JSON.stringify(w)
                           );
+                          window.dispatchEvent(new Event('workspace-changed'));
                         }}
                       >
                         <div className="flex items-center gap-2">

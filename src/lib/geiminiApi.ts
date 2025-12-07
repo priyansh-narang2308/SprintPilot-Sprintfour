@@ -215,9 +215,8 @@ Keep the tone professional, data-driven, and actionable. If context is provided,
     return result.text;
   } catch (error) {
     console.error("Error generating PRD section:", error);
-    return `# ${section}\n\n## Error Generating Content\n\nWe encountered an issue while generating this section. Please try again or manually write your content.\n\nError: ${
-      error instanceof Error ? error.message : "Unknown error"
-    }`;
+    return `# ${section}\n\n## Error Generating Content\n\nWe encountered an issue while generating this section. Please try again or manually write your content.\n\nError: ${error instanceof Error ? error.message : "Unknown error"
+      }`;
   }
 };
 
@@ -249,5 +248,98 @@ Each section should be detailed, actionable, and professionally formatted with M
   } catch (error) {
     console.error("Error generating complete PRD:", error);
     throw new Error("Failed to generate complete PRD");
+  }
+};
+
+export interface GeneratedTask {
+  title: string;
+  description: string;
+  status: 'backlog' | 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high';
+  assignee?: string;
+  tags: string[];
+}
+
+export const generateTasks = async (prompt: string): Promise<GeneratedTask[]> => {
+  try {
+    const systemInstruction = `You are an expert Project Manager and Task Breakdown Specialist for SprintPilot.
+Your goal is to generate a comprehensive list of development tasks based on the user's project description or feature request.
+
+IMPORTANT: You MUST respond with ONLY a valid JSON array. No markdown, no explanations, no code blocks - just pure JSON.
+
+The JSON format should be an array of task objects, each with the following structure:
+{
+  "title": "Task title (clear and actionable)",
+  "description": "Detailed description of what needs to be done",
+  "status": "backlog" | "todo" | "in_progress" | "done",
+  "priority": "low" | "medium" | "high",
+  "assignee": "Optional: Initials or short name (max 10 chars, or omit if not applicable)",
+  "tags": ["Tag1", "Tag2", "Tag3"]
+}
+
+Guidelines:
+1. Generate 5-15 tasks depending on the complexity of the request
+2. Break down the work into logical, actionable tasks
+3. Use appropriate status: most should be "backlog" or "todo", only mark as "in_progress" or "done" if explicitly mentioned
+4. Assign priority based on task importance: "high" for critical/core features, "medium" for important features, "low" for nice-to-haves
+5. Tags should be relevant (e.g., "Frontend", "Backend", "API", "UI", "Database", "Testing", "Core", "Feature")
+6. Assignee can be omitted if not applicable
+7. Make descriptions clear and actionable
+8. Tasks should be in a logical order (dependencies first)
+
+Example valid response:
+[{"title":"Set up authentication system","description":"Implement user registration and login with email/password and OAuth providers","status":"backlog","priority":"high","tags":["Backend","Core","Security"]},{"title":"Design login UI components","description":"Create responsive login and registration forms with validation","status":"backlog","priority":"high","assignee":"UI","tags":["Frontend","UI","Design"]}]
+
+Remember: Return ONLY the JSON array, nothing else.`;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash-exp",
+      contents: `Generate development tasks for: ${prompt}`,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+      },
+    });
+
+    const responseText = (result.text || '').trim();
+
+    if (!responseText) {
+      throw new Error("No response received from AI");
+    }
+
+
+    let jsonText = responseText;
+
+
+    if (responseText.startsWith('```')) {
+      jsonText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    }
+
+    jsonText = jsonText.trim();
+
+    const tasks = JSON.parse(jsonText) as GeneratedTask[];
+
+
+    return tasks.map(task => ({
+      title: task.title || 'Untitled Task',
+      description: task.description || '',
+      status: (['backlog', 'todo', 'in_progress', 'done'].includes(task.status)
+        ? task.status
+        : 'backlog') as 'backlog' | 'todo' | 'in_progress' | 'done',
+      priority: (['low', 'medium', 'high'].includes(task.priority)
+        ? task.priority
+        : 'medium') as 'low' | 'medium' | 'high',
+      assignee: task.assignee && task.assignee.length <= 10 ? task.assignee : undefined,
+      tags: Array.isArray(task.tags) ? task.tags.filter(tag => typeof tag === 'string') : [],
+    }));
+  } catch (error) {
+    console.error("Error generating tasks:", error);
+    throw new Error(
+      error instanceof Error
+        ? `Failed to generate tasks: ${error.message}`
+        : "Failed to generate tasks. Please try again."
+    );
   }
 };
