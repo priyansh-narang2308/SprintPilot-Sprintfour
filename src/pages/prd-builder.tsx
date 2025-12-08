@@ -316,6 +316,7 @@ const PRDBuilderPage: React.FC = () => {
   const copyMarkdown = async () => {
     if (!selected?.content) return;
     await navigator.clipboard.writeText(selected.content);
+    toast.success("Mardown Copied Successfully");
   };
 
   const exportMarkdown = () => {
@@ -331,7 +332,6 @@ const PRDBuilderPage: React.FC = () => {
       .toLowerCase()}.md`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Markdown Copied Successfully");
   };
 
   return (
@@ -383,7 +383,7 @@ const PRDBuilderPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-4 gap-6">
           <aside className="col-span-1 bg-card rounded-2xl p-4 border">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">Your PRDs</h3>
@@ -402,7 +402,11 @@ const PRDBuilderPage: React.FC = () => {
                 prds.map((p) => (
                   <div
                     key={p.id}
-                    className="w-full flex items-start justify-between p-3 rounded-lg hover:bg-muted"
+                    className={`w-full flex items-start justify-between p-3 rounded-lg transition-colors duration-200 cursor-pointer group ${
+                      selected?.id === p.id
+                        ? "bg-gray-200 dark:bg-gray-700"
+                        : "hover:bg-muted"
+                    }`}
                   >
                     <button
                       className="flex-1 text-left"
@@ -414,26 +418,21 @@ const PRDBuilderPage: React.FC = () => {
                       </div>
                     </button>
 
-                    <div className="flex items-center gap-2 ml-3">
+                    <div className="flex items-center gap-1 ml-3">
                       <button
                         title="Edit"
-                        className="p-2 rounded hover:bg-muted"
+                        className="p-2 rounded hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                         onClick={() => openEditModal(p)}
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         title="Delete"
-                        className="p-2 rounded hover:bg-red-50 text-destructive"
+                        className="p-2 rounded hover:bg-red-50 text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                         onClick={() => confirmDeletePRD(p)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                      <div className="text-xs text-muted-foreground">
-                        {p.created_at
-                          ? new Date(p.created_at).toLocaleDateString()
-                          : ""}
-                      </div>
                     </div>
                   </div>
                 ))
@@ -441,7 +440,7 @@ const PRDBuilderPage: React.FC = () => {
             </div>
           </aside>
 
-          <main className="col-span-2 bg-card rounded-2xl p-4 border min-h-[60vh]">
+          <main className="col-span-3 bg-card rounded-2xl p-4 border min-h-[60vh]">
             {selected ? (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
