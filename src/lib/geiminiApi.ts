@@ -215,8 +215,9 @@ Keep the tone professional, data-driven, and actionable. If context is provided,
     return result.text;
   } catch (error) {
     console.error("Error generating PRD section:", error);
-    return `# ${section}\n\n## Error Generating Content\n\nWe encountered an issue while generating this section. Please try again or manually write your content.\n\nError: ${error instanceof Error ? error.message : "Unknown error"
-      }`;
+    return `# ${section}\n\n## Error Generating Content\n\nWe encountered an issue while generating this section. Please try again or manually write your content.\n\nError: ${
+      error instanceof Error ? error.message : "Unknown error"
+    }`;
   }
 };
 
@@ -254,13 +255,15 @@ Each section should be detailed, actionable, and professionally formatted with M
 export interface GeneratedTask {
   title: string;
   description: string;
-  status: 'backlog' | 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high';
+  status: "backlog" | "todo" | "in_progress" | "done";
+  priority: "low" | "medium" | "high";
   assignee?: string;
   tags: string[];
 }
 
-export const generateTasks = async (prompt: string): Promise<GeneratedTask[]> => {
+export const generateTasks = async (
+  prompt: string
+): Promise<GeneratedTask[]> => {
   try {
     const systemInstruction = `You are an expert Project Manager and Task Breakdown Specialist for SprintPilot.
 Your goal is to generate a comprehensive list of development tasks based on the user's project description or feature request.
@@ -303,36 +306,39 @@ Remember: Return ONLY the JSON array, nothing else.`;
       },
     });
 
-    const responseText = (result.text || '').trim();
+    const responseText = (result.text || "").trim();
 
     if (!responseText) {
       throw new Error("No response received from AI");
     }
 
-
     let jsonText = responseText;
 
-
-    if (responseText.startsWith('```')) {
-      jsonText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    if (responseText.startsWith("```")) {
+      jsonText = responseText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
     }
 
     jsonText = jsonText.trim();
 
     const tasks = JSON.parse(jsonText) as GeneratedTask[];
 
-
-    return tasks.map(task => ({
-      title: task.title || 'Untitled Task',
-      description: task.description || '',
-      status: (['backlog', 'todo', 'in_progress', 'done'].includes(task.status)
+    return tasks.map((task) => ({
+      title: task.title || "Untitled Task",
+      description: task.description || "",
+      status: (["backlog", "todo", "in_progress", "done"].includes(task.status)
         ? task.status
-        : 'backlog') as 'backlog' | 'todo' | 'in_progress' | 'done',
-      priority: (['low', 'medium', 'high'].includes(task.priority)
+        : "backlog") as "backlog" | "todo" | "in_progress" | "done",
+      priority: (["low", "medium", "high"].includes(task.priority)
         ? task.priority
-        : 'medium') as 'low' | 'medium' | 'high',
-      assignee: task.assignee && task.assignee.length <= 10 ? task.assignee : undefined,
-      tags: Array.isArray(task.tags) ? task.tags.filter(tag => typeof tag === 'string') : [],
+        : "medium") as "low" | "medium" | "high",
+      assignee:
+        task.assignee && task.assignee.length <= 10 ? task.assignee : undefined,
+      tags: Array.isArray(task.tags)
+        ? task.tags.filter((tag) => typeof tag === "string")
+        : [],
     }));
   } catch (error) {
     console.error("Error generating tasks:", error);
@@ -340,6 +346,148 @@ Remember: Return ONLY the JSON array, nothing else.`;
       error instanceof Error
         ? `Failed to generate tasks: ${error.message}`
         : "Failed to generate tasks. Please try again."
+    );
+  }
+};
+
+export interface WireframeElement {
+  id: string;
+  type: "rect" | "circle" | "text" | "image" | "line" | "frame";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  color?: string;
+  content?: string;
+  rotation?: number;
+  opacity?: number;
+}
+
+export interface WireframeContent {
+  elements: WireframeElement[];
+  zoom: number;
+  backgroundColor?: string;
+  name?: string;
+}
+
+export const generateWireframeFromPRD = async (
+  prdContent: string,
+  prdTitle: string
+): Promise<WireframeContent> => {
+  try {
+    const systemInstruction = `You are an expert UI/UX designer and wireframe architect for SprintPilot.
+Your goal is to generate a detailed wireframe layout structure based on a PRD (Product Requirements Document).
+
+IMPORTANT: You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no code blocks - just pure JSON.
+
+The JSON format should be:
+{
+  "elements": [
+    {
+      "id": "unique-id",
+      "type": "rect|circle|text|image|line|frame",
+      "x": number (pixel position from left),
+      "y": number (pixel position from top),
+      "width": number (in pixels),
+      "height": number (in pixels),
+      "label": "Element name/purpose",
+      "color": "bg-color-class (optional)",
+      "content": "text content (optional)",
+      "rotation": 0,
+      "opacity": 1
+    }
+  ],
+  "zoom": 100,
+  "backgroundColor": "bg-color-class (optional)",
+  "name": "Wireframe name"
+}
+
+Guidelines for wireframe generation:
+1. Create a comprehensive layout for the main user interface described in the PRD
+2. Use realistic positioning and sizing
+3. Include key sections: Header/Navigation, Hero/Main Content, Features, CTA Buttons, Footer
+4. Use frame elements (type: "frame") to group related components
+5. Color suggestions: 
+   - Headers/Navigation: "bg-primary/20"
+   - Important sections: "bg-blue-100"
+   - Secondary sections: "bg-gray-100"
+   - CTAs: "bg-primary/30"
+   - Backgrounds: "bg-white"
+6. Make the wireframe responsive-ready (use proportional dimensions)
+7. Include labels that describe each element's purpose
+8. Create a mobile-friendly layout if mobile is mentioned in the PRD
+9. Element IDs should be unique and descriptive (e.g., "header-1", "cta-button", "feature-section")
+10. Base layout on 1280px width for desktop, 375px for mobile views
+
+Example structure:
+{
+  "elements": [
+    {"id":"frame-main","type":"frame","x":0,"y":0,"width":1280,"height":1600,"label":"Main Container","color":"bg-white"},
+    {"id":"header","type":"rect","x":0,"y":0,"width":1280,"height":80,"label":"Header/Navigation","color":"bg-primary/20"}
+  ],
+  "zoom": 100,
+  "name": "Desktop Layout"
+}
+
+Remember: Return ONLY the JSON object, nothing else. Make the wireframe detailed and realistic.`;
+
+    const userPrompt = `Generate a professional wireframe layout for a product based on this PRD content:
+
+Title: ${prdTitle}
+
+Content:
+${prdContent.substring(0, 2000)}
+
+Create a complete, professional wireframe that represents the main user interface and user flows described in this PRD. Include all major sections and components.`;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash-exp",
+      contents: userPrompt,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+      },
+    });
+
+    const responseText = (result.text || "").trim();
+
+    if (!responseText) {
+      throw new Error("No response received from AI");
+    }
+
+    let jsonText = responseText;
+
+    if (responseText.startsWith("```")) {
+      jsonText = responseText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+    }
+
+    jsonText = jsonText.trim();
+
+    const wireframe = JSON.parse(jsonText) as WireframeContent;
+
+    // Validate the response structure
+    if (!wireframe.elements || !Array.isArray(wireframe.elements)) {
+      throw new Error("Invalid wireframe structure");
+    }
+
+    return {
+      elements: wireframe.elements || [],
+      zoom: wireframe.zoom || 100,
+      backgroundColor: wireframe.backgroundColor || "bg-white",
+      name: wireframe.name || "Generated Wireframe",
+    };
+  } catch (error) {
+    console.error("Error generating wireframe from PRD:", error);
+    throw new Error(
+      error instanceof Error
+        ? `Failed to generate wireframe: ${error.message}`
+        : "Failed to generate wireframe. Please try again."
     );
   }
 };
