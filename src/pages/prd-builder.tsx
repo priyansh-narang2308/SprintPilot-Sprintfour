@@ -10,10 +10,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "../components/ui/dropdown-menu";
-import { Plus, Download, Copy as CopyIcon } from "lucide-react";
+import { Plus, Download, Copy as CopyIcon, Trash2, Edit2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "../components/ui/dialog";
 import { supabase } from "../lib/supabase";
 import { generateCompletePRD } from "../lib/geiminiApi";
 import { marked } from "marked";
+import { toast } from "sonner";
 
 type PRD = {
   id: string;
@@ -29,6 +39,13 @@ const PRDBuilderPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [selected, setSelected] = useState<PRD | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editContent, setEditContent] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PRD | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const [productName, setProductName] = useState("");
   const [productDescription, setProductDescription] = useState("");
@@ -106,8 +123,28 @@ const PRDBuilderPage: React.FC = () => {
       if (workspace && workspace.id)
         query = query.eq("workspace_id", workspace.id);
       const { data, error } = await query;
-      if (error) throw error;
-      setPrds((data as PRD[]) || []);
+      if (error) {
+        if ((error as any)?.code === "42703") {
+          let q2 = supabase
+            .from("prds")
+            .select("id,title,description,created_at")
+            .order("created_at", { ascending: false });
+          if (workspace && workspace.id)
+            q2 = q2.eq("workspace_id", workspace.id);
+          const { data: d2, error: e2 } = await q2;
+          if (e2) throw e2;
+
+          const mapped = ((d2 as any[]) || []).map((r) => ({
+            ...r,
+            content: null,
+          }));
+          setPrds(mapped as PRD[]);
+        } else {
+          throw error;
+        }
+      } else {
+        setPrds((data as PRD[]) || []);
+      }
     } catch (err) {
       console.error("Failed to fetch PRDs", err);
     } finally {
@@ -122,6 +159,62 @@ const PRDBuilderPage: React.FC = () => {
     setGoals("");
     setExtraContext("");
     setModalOpen(true);
+  };
+
+  const openEditModal = (p: PRD) => {
+    setEditId(p.id);
+    setEditTitle(p.title || "");
+    setEditDescription(p.description || "");
+    setEditContent(p.content ?? "");
+    setEditModalOpen(true);
+  };
+
+  const saveEditPRD = async () => {
+    try {
+      const workspaceRaw = localStorage.getItem("current_workspace");
+      const workspace = workspaceRaw ? JSON.parse(workspaceRaw) : null;
+      if (editId) {
+        // update
+        const payload: Record<string, unknown> = {
+          title: editTitle,
+          description: editDescription,
+        };
+        // only include content if we have it
+        if (typeof editContent !== "undefined") payload.content = editContent;
+        await supabase.from("prds").update(payload).eq("id", editId);
+      } else {
+        // insert new blank PRD
+        const payload: Record<string, unknown> = {
+          title: editTitle || "Untitled PRD",
+          description: editDescription || null,
+          content: editContent ?? "",
+        };
+        if (workspace && workspace.id) payload.workspace_id = workspace.id;
+        await supabase.from("prds").insert(payload);
+      }
+      setEditModalOpen(false);
+      await fetchPRDs();
+    } catch (err) {
+      console.error("Save PRD failed", err);
+    }
+  };
+
+  const confirmDeletePRD = (p: PRD) => {
+    setDeleteTarget(p);
+    setShowDeleteDialog(true);
+  };
+
+  const deletePRD = async () => {
+    if (!deleteTarget) return;
+    try {
+      await supabase.from("prds").delete().eq("id", deleteTarget.id);
+      setShowDeleteDialog(false);
+      if (selected?.id === deleteTarget.id) setSelected(null);
+      await fetchPRDs();
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("Delete PRD failed", err);
+    }
   };
 
   const generatePRD = async () => {
@@ -140,15 +233,42 @@ const PRDBuilderPage: React.FC = () => {
       };
       if (workspace && workspace.id) insertPayload.workspace_id = workspace.id;
 
-      const { data, error } = await supabase
-        .from("prds")
-        .insert(insertPayload)
-        .select("id,title,description,content,created_at")
-        .single();
-      if (error) throw error;
-      setModalOpen(false);
-      await fetchPRDs();
-      setSelected(data as PRD);
+      try {
+        const { data, error } = await supabase
+          .from("prds")
+          .insert(insertPayload)
+          .select("id,title,description,content,created_at")
+          .single();
+        if (error) throw error;
+        setModalOpen(false);
+        await fetchPRDs();
+        setSelected(data as PRD);
+      } catch (err: any) {
+        console.warn(
+          "Insert/select with content failed, retrying without content",
+          err
+        );
+        if (err?.code === "42703") {
+          const { data, error } = await supabase
+            .from("prds")
+            .insert(insertPayload)
+            .select("id,title,description,created_at")
+            .single();
+          if (error) throw error;
+          setModalOpen(false);
+          await fetchPRDs();
+
+          setSelected({
+            id: (data as any).id,
+            title: (data as any).title,
+            description: (data as any).description,
+            created_at: (data as any).created_at,
+            content: md ?? null,
+          });
+        } else {
+          throw err;
+        }
+      }
     } catch (err) {
       console.error("Generation error", err);
     } finally {
@@ -173,7 +293,23 @@ const PRDBuilderPage: React.FC = () => {
       await fetchPRDs();
       setSelected(p);
     } catch (err) {
-      console.error("Update PRD failed", err);
+      if ((err as any)?.code === "42703") {
+        try {
+          await supabase
+            .from("prds")
+            .update({ title: p.title, description: p.description })
+            .eq("id", p.id);
+          await fetchPRDs();
+          setSelected(p);
+          console.warn(
+            "Updated PRD without content column (content not persisted)"
+          );
+        } catch (e2) {
+          console.error("Update PRD failed (no-content fallback)", e2);
+        }
+      } else {
+        console.error("Update PRD failed", err);
+      }
     }
   };
 
@@ -195,6 +331,7 @@ const PRDBuilderPage: React.FC = () => {
       .toLowerCase()}.md`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success("Markdown Copied Successfully");
   };
 
   return (
@@ -239,6 +376,7 @@ const PRDBuilderPage: React.FC = () => {
             <Button variant="outline" size="sm" onClick={fetchPRDs}>
               Refresh
             </Button>
+
             <Button variant="hero" size="sm" onClick={openCreateModal}>
               <Plus className="w-4 h-4 mr-2" /> New AI PRD
             </Button>
@@ -262,23 +400,42 @@ const PRDBuilderPage: React.FC = () => {
                 </div>
               ) : (
                 prds.map((p) => (
-                  <button
+                  <div
                     key={p.id}
-                    className="w-full text-left p-3 rounded-lg hover:bg-muted flex justify-between"
-                    onClick={() => openPRD(p)}
+                    className="w-full flex items-start justify-between p-3 rounded-lg hover:bg-muted"
                   >
-                    <div>
+                    <button
+                      className="flex-1 text-left"
+                      onClick={() => openPRD(p)}
+                    >
                       <div className="font-medium">{p.title}</div>
                       <div className="text-xs text-muted-foreground truncate">
                         {(p.description || "").slice(0, 80)}
                       </div>
+                    </button>
+
+                    <div className="flex items-center gap-2 ml-3">
+                      <button
+                        title="Edit"
+                        className="p-2 rounded hover:bg-muted"
+                        onClick={() => openEditModal(p)}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        title="Delete"
+                        className="p-2 rounded hover:bg-red-50 text-destructive"
+                        onClick={() => confirmDeletePRD(p)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <div className="text-xs text-muted-foreground">
+                        {p.created_at
+                          ? new Date(p.created_at).toLocaleDateString()
+                          : ""}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {p.created_at
-                        ? new Date(p.created_at).toLocaleDateString()
-                        : ""}
-                    </div>
-                  </button>
+                  </div>
                 ))
               )}
             </div>
@@ -357,7 +514,7 @@ const PRDBuilderPage: React.FC = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="w-[720px] bg-white rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Create PRD (AI)</h3>
+                <h3 className="text-lg font-semibold">Create PRD</h3>
                 <Button
                   variant="outline"
                   size="sm"
@@ -415,6 +572,80 @@ const PRDBuilderPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Edit / Create PRD modal (blank or edit existing) */}
+        <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editId ? "Edit PRD" : "New PRD"}</DialogTitle>
+              <DialogDescription>
+                {editId
+                  ? "Edit the PRD details and content."
+                  : "Create a new blank PRD."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 mt-2">
+              <input
+                className="w-full p-2 border rounded"
+                placeholder="Title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+              <input
+                className="w-full p-2 border rounded"
+                placeholder="Short description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              />
+              <textarea
+                className="w-full p-2 border rounded h-40"
+                placeholder="Content (markdown)"
+                value={editContent ?? ""}
+                onChange={(e) => setEditContent(e.target.value)}
+              />
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button onClick={saveEditPRD}>
+                {editId ? "Save" : "Create"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete confirmation */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete PRD</DialogTitle>
+              <DialogDescription>
+                This will permanently delete the PRD. This action cannot be
+                undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4">
+              <p className="text-sm">
+                Are you sure you want to delete{" "}
+                <strong>{deleteTarget?.title}</strong>?
+              </p>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button
+                className="bg-destructive text-destructive-foreground"
+                onClick={deletePRD}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
