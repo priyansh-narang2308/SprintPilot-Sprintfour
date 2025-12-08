@@ -1,4 +1,4 @@
--- 001_create_personas.sql
+
 
 CREATE TABLE IF NOT EXISTS public.personas (
   id bigserial PRIMARY KEY,
