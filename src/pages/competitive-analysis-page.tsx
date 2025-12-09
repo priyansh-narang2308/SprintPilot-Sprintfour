@@ -1,49 +1,41 @@
+import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Wand2,
   Download,
-  ExternalLink,
   TrendingUp,
   TrendingDown,
   Minus,
+  Trash2,
+  Edit2,
+  Loader2,
 } from "lucide-react";
 import DashboardLayout from "../components/dashboard/dashboard-layout";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
+import { Badge } from "../components/ui/badge";
 
-const competitors = [
-  {
-    name: "Linear",
-    logo: "L",
-    description: "Issue tracking for software teams",
-    pricing: "$8/user/mo",
-    strengths: ["Beautiful UI", "Fast performance", "Keyboard shortcuts"],
-    weaknesses: [
-      "Limited customization",
-      "No free tier for teams",
-      "Limited reporting",
-    ],
-  },
-  {
-    name: "Notion",
-    logo: "N",
-    description: "All-in-one workspace",
-    pricing: "$10/user/mo",
-    strengths: ["Flexible structure", "Great documentation", "Many templates"],
-    weaknesses: [
-      "Can be slow",
-      "Steep learning curve",
-      "Complex for simple use cases",
-    ],
-  },
-  {
-    name: "Productboard",
-    logo: "P",
-    description: "Product management platform",
-    pricing: "$20/user/mo",
-    strengths: ["Customer insights", "Roadmap views", "Integrations"],
-    weaknesses: ["Expensive", "Complex setup", "Overkill for small teams"],
-  },
-];
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
+import { toast } from "sonner";
+
+interface Competitor {
+  id: number;
+  name: string;
+  description: string;
+  pricing: string;
+  website_url: string;
+  strengths: string[];
+  weaknesses: string[];
+  notes: string;
+}
 
 const swotAnalysis = {
   strengths: [
@@ -71,112 +63,346 @@ const swotAnalysis = {
 };
 
 const CompetitiveAnalysisPage = () => {
+  const { user } = useAuth();
+
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    pricing: "",
+    website_url: "",
+    strengths: "",
+    weaknesses: "",
+    notes: "",
+  });
+
+  const currentWorkspaceId = localStorage.getItem("currentWorkspaceId");
+
+  const fetchCompetitors = useCallback(async () => {
+    if (!currentWorkspaceId) {
+      setLoading(false);
+      setCompetitors([]);
+      return;
+    }
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("competitors")
+        .select("*")
+        .eq("workspace_id", currentWorkspaceId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setCompetitors(
+        (data?.map((item: Record<string, unknown>) => ({
+          ...item,
+          strengths: Array.isArray(item.strengths)
+            ? (item.strengths as string[])
+            : [],
+          weaknesses: Array.isArray(item.weaknesses)
+            ? (item.weaknesses as string[])
+            : [],
+        })) as Competitor[]) || []
+      );
+    } catch (error) {
+      console.error("Error fetching competitors:", error);
+      toast.error("Failed to fetch competitors");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentWorkspaceId]);
+
+  useEffect(() => {
+    if (currentWorkspaceId && user) {
+      fetchCompetitors();
+    }
+  }, [currentWorkspaceId, user, fetchCompetitors]);
+
+  const handleAddCompetitor = async () => {
+    try {
+      if (!formData.name.trim()) {
+        toast.error("Competitor name is required");
+        return;
+      }
+
+      const strengthsArray = formData.strengths
+        .split("\n")
+        .filter((s) => s.trim())
+        .map((s) => s.trim());
+      const weaknessesArray = formData.weaknesses
+        .split("\n")
+        .filter((w) => w.trim())
+        .map((w) => w.trim());
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("competitors")
+          .update({
+            name: formData.name,
+            description: formData.description,
+            pricing: formData.pricing,
+            website_url: formData.website_url,
+            strengths: strengthsArray,
+            weaknesses: weaknessesArray,
+            notes: formData.notes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingId);
+
+        if (error) throw error;
+        toast.success("Competitor updated successfully");
+      } else {
+        const { error } = await supabase.from("competitors").insert({
+          workspace_id: currentWorkspaceId,
+          user_id: user?.id,
+          name: formData.name,
+          description: formData.description,
+          pricing: formData.pricing,
+          website_url: formData.website_url,
+          strengths: strengthsArray,
+          weaknesses: weaknessesArray,
+          notes: formData.notes,
+        });
+
+        if (error) throw error;
+        toast.success("Competitor added successfully");
+      }
+
+      resetForm();
+      fetchCompetitors();
+    } catch (error) {
+      console.error("Error saving competitor:", error);
+      toast.error("Failed to save competitor");
+    }
+  };
+
+  const handleDeleteCompetitor = async (id: number) => {
+    try {
+      const { error } = await supabase
+        .from("competitors")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast.success("Competitor deleted successfully");
+      fetchCompetitors();
+    } catch (error) {
+      console.error("Error deleting competitor:", error);
+      toast.error("Failed to delete competitor");
+    }
+  };
+
+  const handleEditCompetitor = (competitor: Competitor) => {
+    setEditingId(competitor.id);
+    setFormData({
+      name: competitor.name,
+      description: competitor.description || "",
+      pricing: competitor.pricing || "",
+      website_url: competitor.website_url || "",
+      strengths: competitor.strengths.join("\n"),
+      weaknesses: competitor.weaknesses.join("\n"),
+      notes: competitor.notes || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      description: "",
+      pricing: "",
+      website_url: "",
+      strengths: "",
+      weaknesses: "",
+      notes: "",
+    });
+    setEditingId(null);
+    setIsDialogOpen(false);
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <DashboardLayout title="Competitive Analysis">
       <div className="space-y-8">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Competitive Analysis</h1>
             <p className="text-muted-foreground">
               Understand your market position
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Button variant="outline" size="sm" disabled>
               <Download className="w-4 h-4" />
-              Export Report
+              <span className="hidden sm:inline ml-2">Export Report</span>
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" size="sm" disabled>
               <Wand2 className="w-4 h-4" />
-              AI Analysis
+              <span className="hidden sm:inline ml-2">AI Analysis</span>
             </Button>
-            <Button variant="hero">
+            <Button
+              variant="hero"
+              size="sm"
+              onClick={() => setIsDialogOpen(true)}
+            >
               <Plus className="w-4 h-4" />
-              Add Competitor
+              <span className="hidden sm:inline ml-2">Add</span>
             </Button>
           </div>
         </div>
 
         <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border/50">
-                  <th className="text-left p-4 font-semibold text-sm">
-                    Competitor
-                  </th>
-                  <th className="text-left p-4 font-semibold text-sm">
-                    Pricing
-                  </th>
-                  <th className="text-left p-4 font-semibold text-sm">
-                    Strengths
-                  </th>
-                  <th className="text-left p-4 font-semibold text-sm">
-                    Weaknesses
-                  </th>
-                  <th className="text-left p-4 font-semibold text-sm">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {competitors.map((competitor) => (
-                  <tr
-                    key={competitor.name}
-                    className="border-b border-border/50 hover:bg-muted/50 transition-colors"
-                  >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center font-semibold">
-                          {competitor.logo}
-                        </div>
-                        <div>
-                          <p className="font-medium">{competitor.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {competitor.description}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className="font-medium">{competitor.pricing}</span>
-                    </td>
-                    <td className="p-4">
-                      <ul className="space-y-1">
-                        {competitor.strengths.map((s, i) => (
-                          <li
-                            key={i}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <TrendingUp className="w-3 h-3 text-chart-4" />
-                            {s}
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td className="p-4">
-                      <ul className="space-y-1">
-                        {competitor.weaknesses.map((w, i) => (
-                          <li
-                            key={i}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <TrendingDown className="w-3 h-3 text-destructive" />
-                            {w}
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td className="p-4">
-                      <Button variant="ghost" size="sm">
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
-                    </td>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : competitors.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">No competitors yet</p>
+              <Button variant="hero" onClick={() => setIsDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add your first competitor
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="text-left p-3 sm:p-4 font-semibold text-sm">
+                      Competitor
+                    </th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-sm hidden md:table-cell">
+                      Pricing
+                    </th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-sm">
+                      Strengths
+                    </th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-sm hidden lg:table-cell">
+                      Weaknesses
+                    </th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-sm">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {competitors.map((competitor) => (
+                    <tr
+                      key={competitor.id}
+                      className="border-b border-border/50 hover:bg-muted/50 transition-colors"
+                    >
+                      <td className="p-3 sm:p-4">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-muted flex items-center justify-center font-semibold text-xs sm:text-sm flex-shrink-0">
+                            {getInitials(competitor.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate text-sm sm:text-base">
+                              {competitor.name}
+                            </p>
+                            {competitor.description && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {competitor.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3 sm:p-4 hidden md:table-cell">
+                        <span className="font-medium text-sm">
+                          {competitor.pricing || "-"}
+                        </span>
+                      </td>
+                      <td className="p-3 sm:p-4">
+                        <div className="flex flex-wrap gap-1">
+                          {competitor.strengths.length > 0 ? (
+                            competitor.strengths.slice(0, 2).map((s, i) => (
+                              <Badge
+                                key={i}
+                                variant="outline"
+                                className="text-xs bg-chart-4/10"
+                              >
+                                {s}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              -
+                            </span>
+                          )}
+                          {competitor.strengths.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{competitor.strengths.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 sm:p-4 hidden lg:table-cell">
+                        <div className="flex flex-wrap gap-1">
+                          {competitor.weaknesses.length > 0 ? (
+                            competitor.weaknesses.slice(0, 2).map((w, i) => (
+                              <Badge
+                                key={i}
+                                variant="outline"
+                                className="text-xs bg-destructive/10"
+                              >
+                                {w}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              -
+                            </span>
+                          )}
+                          {competitor.weaknesses.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{competitor.weaknesses.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 sm:p-4">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditCompetitor(competitor)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleDeleteCompetitor(competitor.id)
+                            }
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div>
@@ -244,6 +470,141 @@ const CompetitiveAnalysisPage = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="sticky top-0 bg-background z-10 px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="text-xl">
+              {editingId ? "Edit Competitor" : "Add New Competitor"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 px-6 pb-6">
+            <div className="grid gap-5">
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  Competitor Name <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  placeholder="e.g., Linear, Jira, Asana"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  className="w-full text-base"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  Description
+                </label>
+                <Input
+                  placeholder="Brief description of the competitor"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="w-full text-base"
+                />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Pricing
+                  </label>
+                  <Input
+                    placeholder="e.g., $10/user/mo"
+                    value={formData.pricing}
+                    onChange={(e) =>
+                      setFormData({ ...formData, pricing: e.target.value })
+                    }
+                    className="w-full text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Website URL
+                  </label>
+                  <Input
+                    placeholder="https://example.com"
+                    type="url"
+                    value={formData.website_url}
+                    onChange={(e) =>
+                      setFormData({ ...formData, website_url: e.target.value })
+                    }
+                    className="w-full text-base"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  Strengths
+                </label>
+                <Textarea
+                  placeholder="List strengths, one per line&#10;e.g., Fast UI&#10;Great support&#10;Good pricing"
+                  value={formData.strengths}
+                  onChange={(e) =>
+                    setFormData({ ...formData, strengths: e.target.value })
+                  }
+                  rows={4}
+                  className="w-full resize-none text-base"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Enter each strength on a new line
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  Weaknesses
+                </label>
+                <Textarea
+                  placeholder="List weaknesses, one per line&#10;e.g., Limited features&#10;Expensive&#10;Steep learning curve"
+                  value={formData.weaknesses}
+                  onChange={(e) =>
+                    setFormData({ ...formData, weaknesses: e.target.value })
+                  }
+                  rows={4}
+                  className="w-full resize-none text-base"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Enter each weakness on a new line
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  Additional Notes
+                </label>
+                <Textarea
+                  placeholder="Any other observations about this competitor"
+                  value={formData.notes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, notes: e.target.value })
+                  }
+                  rows={3}
+                  className="w-full resize-none text-base"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={resetForm} className="px-6">
+                Cancel
+              </Button>
+              <Button
+                variant="hero"
+                onClick={handleAddCompetitor}
+                className="px-6"
+              >
+                {editingId ? "Update Competitor" : "Add Competitor"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
