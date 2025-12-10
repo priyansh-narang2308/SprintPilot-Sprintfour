@@ -3,7 +3,6 @@ import {
   Plus,
   Wand2,
   GripVertical,
-  Flag,
   Loader2,
   Trash2,
   Edit2,
@@ -35,6 +34,16 @@ import { Badge } from "../components/ui/badge";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import {
   DndContext,
   closestCenter,
@@ -100,7 +109,7 @@ const DraggableCard = ({
   onEdit,
 }: {
   feature: RoadmapFeature;
-  onDelete: (id: string) => void;
+  onDelete: (feature: RoadmapFeature) => void;
   onEdit: (feature: RoadmapFeature) => void;
 }) => {
   const {
@@ -153,20 +162,21 @@ const DraggableCard = ({
             ))}
           </div>
           <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mt-2">
             <div className="flex items-center gap-2">
-              <Flag
-                className={`w-3 h-3 ${
+              <span
+                className={`text-[10px] px-2 py-1 rounded-md font-bold border uppercase tracking-wider ${
                   feature.priority === "High"
-                    ? "text-destructive"
+                    ? "bg-red-500/10 text-red-600 border-red-200/50"
                     : feature.priority === "Medium"
-                    ? "text-chart-3"
-                    : "text-muted-foreground"
+                    ? "bg-amber-500/10 text-amber-600 border-amber-200/50"
+                    : "bg-slate-500/10 text-slate-600 border-slate-200/50"
                 }`}
-              />
-              <span className="text-xs text-muted-foreground">
+              >
                 {feature.priority}
               </span>
             </div>
+          </div>
           </div>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -181,7 +191,7 @@ const DraggableCard = ({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => onDelete(feature.id)}
+            onClick={() => onDelete(feature)}
             className="h-6 w-6 p-0 text-destructive hover:text-destructive"
           >
             <Trash2 className="w-3 h-3" />
@@ -201,7 +211,7 @@ const RoadmapColumn = ({
 }: {
   column: ColumnType;
   features: RoadmapFeature[];
-  onDelete: (id: string) => void;
+  onDelete: (feature: RoadmapFeature) => void;
   onEdit: (feature: RoadmapFeature) => void;
   onAddClick: (status: "now" | "next" | "later") => void;
 }) => {
@@ -240,7 +250,7 @@ const RoadmapColumn = ({
               <DraggableCard
                 key={feature.id}
                 feature={feature}
-                onDelete={onDelete}
+                onDelete={() => onDelete(feature)}
                 onEdit={onEdit}
               />
             ))}
@@ -526,12 +536,23 @@ const RoadmapsPage = () => {
     }
   };
 
-  const handleDeleteFeature = async (id: string) => {
+  /* Delete Confirmation State */
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [featureToDelete, setFeatureToDelete] = useState<RoadmapFeature | null>(null);
+
+  const handleDeleteClick = (feature: RoadmapFeature) => {
+    setFeatureToDelete(feature);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!featureToDelete) return;
+
     try {
       const { error } = await supabase
         .from("roadmap_features")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
+        .delete()
+        .eq("id", featureToDelete.id);
 
       if (error) throw error;
 
@@ -540,6 +561,9 @@ const RoadmapsPage = () => {
     } catch (error) {
       console.error("Error deleting feature:", error);
       toast.error("Failed to delete feature");
+    } finally {
+      setDeleteDialogOpen(false);
+      setFeatureToDelete(null);
     }
   };
 
@@ -700,7 +724,7 @@ const RoadmapsPage = () => {
     const { active, over } = event;
     if (!over) return;
     
-    // ... (rest of logic)
+
 
     const activeId = active.id;
     const overId = over.id;
@@ -716,27 +740,23 @@ const RoadmapsPage = () => {
 
     if (isActiveTask && isOverTask) {
        overIndex = features.findIndex((f) => f.id === overId);
-       // Reorder if needed (same column reorder finalization)
+
        if (activeIndex !== overIndex) {
          newFeatures = arrayMove(newFeatures, activeIndex, overIndex);
          newStatus = newFeatures[overIndex].status; // should be same but good to ensure
        }
     } else if (isActiveTask && isOverColumn) {
-      // Dropped on column directly
       newStatus = over.id as "now" | "next" | "later";
-      // We might want to move it to end of list or similar, but for now we leave position as is relative to previous sort
     }
 
     setFeatures(newFeatures);
 
-    // Toast notification
     if (feature && feature.status !== newStatus) {
       toast.success(`Moved to ${newStatus}`);
     }
 
-    // Persist changes
+
     try {
-      // 1. Update the moved feature immediately
       await supabase
          .from("roadmap_features")
          .update({
@@ -744,21 +764,16 @@ const RoadmapsPage = () => {
          })
          .eq("id", activeId);
 
-      // 2. Recalculate positions for the destination column and update all
-      // Filter features in that column based on *new* local state order
+      
       const columnFeatures = newFeatures.filter(f => f.status === newStatus);
 
-      // Update positions in DB
       const updates = columnFeatures.map((f, index) => ({
           id: f.id,
           position: index,
           status: newStatus 
       }));
 
-      // We can do this in parallel or batch? Supabase upsert needs all fields or careful handling.
-      // Easiest is to iterate or use UPSERT with id.
-      // For improved performance, we can just update the ones that changed, but refreshing all positions in column is safest.
-      
+   
       for (const update of updates) {
            await supabase
           .from("roadmap_features")
@@ -769,7 +784,7 @@ const RoadmapsPage = () => {
     } catch (error) {
       console.error("Error updating positions:", error);
       toast.error("Failed to save order");
-      fetchFeatures(); // Revert
+      fetchFeatures(); 
     }
   };
 
@@ -807,7 +822,6 @@ const RoadmapsPage = () => {
   return (
     <DashboardLayout title="Roadmaps">
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Product Roadmap</h1>
@@ -836,7 +850,6 @@ const RoadmapsPage = () => {
           </div>
         </div>
 
-        {/* Roadmap Grid */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -855,7 +868,7 @@ const RoadmapsPage = () => {
                   key={column.id}
                   column={column}
                   features={groupedFeatures[column.id]}
-                  onDelete={handleDeleteFeature}
+                  onDelete={handleDeleteClick}
                   onEdit={handleEditFeature}
                   onAddClick={(status) => {
                     setFormData({ ...formData, status });
@@ -998,15 +1011,15 @@ const RoadmapsPage = () => {
       </Dialog>
 
       <Dialog open={isAIModalOpen} onOpenChange={setIsAIModalOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="p-6 pb-2">
             <DialogTitle className="flex items-center gap-2">
                <Sparkles className="w-5 h-5 text-primary" />
                Generate Roadmap with AI
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-6 py-4">
+          <div className="flex-1 overflow-y-auto space-y-6 px-6 py-4">
              {aiSuggestions.length === 0 ? (
                 <div className="space-y-4">
                    <div className="bg-primary/5 p-4 rounded-lg border border-primary/10">
@@ -1077,7 +1090,7 @@ const RoadmapsPage = () => {
              )}
           </div>
 
-          <div className="pt-4 border-t flex justify-end gap-3 sticky bottom-0 bg-background z-10">
+          <div className="p-6 pt-4 border-t flex justify-end gap-3 sticky bottom-0 bg-background z-10">
              {aiSuggestions.length === 0 ? (
                 <>
                    <Button variant="ghost" onClick={() => setIsAIModalOpen(false)}>Cancel</Button>
@@ -1117,6 +1130,23 @@ const RoadmapsPage = () => {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the feature
+              "{featureToDelete?.title}" from your roadmap.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };
