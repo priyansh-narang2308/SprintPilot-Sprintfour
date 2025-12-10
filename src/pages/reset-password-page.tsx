@@ -19,7 +19,7 @@ const ResetPasswordPage = () => {
     const { data } = supabase.auth.onAuthStateChange(
       async (event, _session) => {
         if (event === "PASSWORD_RECOVERY") {
-          // User is in recovery mode, allow password reset
+          // User is in recovery mode, allow password rese
         }
       }
     );

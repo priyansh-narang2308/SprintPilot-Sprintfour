@@ -491,3 +491,83 @@ Create a complete, professional wireframe that represents the main user interfac
     );
   }
 };
+
+export interface GeneratedRoadmapFeature {
+  title: string;
+  description: string;
+  status: "now" | "next" | "later";
+  priority: "Low" | "Medium" | "High";
+  tags: string[];
+}
+
+export const generateRoadmapSuggestions = async (
+  context: string
+): Promise<GeneratedRoadmapFeature[]> => {
+  try {
+    const systemInstruction = `You are an expert Product Manager for SprintPilot.
+Your goal is to generate a strategic product roadmap based on the user's project context.
+
+IMPORTANT: You MUST respond with ONLY a valid JSON array. No markdown, no explanations, no code blocks - just pure JSON.
+
+The JSON format should be an array of objects:
+[
+  {
+    "title": "Feature Title",
+    "description": "Brief description",
+    "status": "now" | "next" | "later",
+    "priority": "Low" | "Medium" | "High",
+    "tags": ["Tag1", "Tag2"]
+  }
+]
+
+Guidelines:
+1. "now": Critical core features needed immediately.
+2. "next": Important features for the near term.
+3. "later": Future enhancements and nice-to-haves.
+4. Generate 6-12 items distributed across the statuses.
+5. Be specific and actionable.
+6. Return ONLY the JSON array.`;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash-exp",
+      contents: `Generate a product roadmap for: ${context}`,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+      },
+    });
+
+    const responseText = (result.text || "").trim();
+
+    if (!responseText) {
+      throw new Error("No response received from AI");
+    }
+
+    let jsonText = responseText;
+
+    if (responseText.startsWith("```")) {
+      jsonText = responseText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+    }
+
+    const features = JSON.parse(jsonText) as GeneratedRoadmapFeature[];
+
+    return features.map((f) => ({
+      ...f,
+      status: (["now", "next", "later"].includes(f.status)
+        ? f.status
+        : "later") as "now" | "next" | "later",
+      priority: (["Low", "Medium", "High"].includes(f.priority)
+        ? f.priority
+        : "Medium") as "Low" | "Medium" | "High",
+      tags: Array.isArray(f.tags) ? f.tags : [],
+    }));
+  } catch (error) {
+    console.error("Error generating roadmap:", error);
+    throw new Error("Failed to generate roadmap suggestions");
+  }
+};

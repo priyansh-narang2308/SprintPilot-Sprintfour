@@ -16,7 +16,7 @@ const AuthCallback = () => {
 
         if (error) {
           toast.error(errorDescription || "Authentication failed");
-          // Redirect to login after showing error
+
           setTimeout(() => {
             navigate("/login", { replace: true });
           }, 2000);

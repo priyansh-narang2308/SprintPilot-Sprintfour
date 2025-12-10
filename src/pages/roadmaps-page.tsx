@@ -7,7 +7,13 @@ import {
   Loader2,
   Trash2,
   Edit2,
+  Sparkles,
 } from "lucide-react";
+import { 
+  generateRoadmapSuggestions, 
+  type GeneratedRoadmapFeature 
+} from "../lib/geiminiApi";
+import { Checkbox } from "../components/ui/checkbox";
 import DashboardLayout from "../components/dashboard/dashboard-layout";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -214,7 +220,7 @@ const RoadmapColumn = ({
 
   return (
     <div className="space-y-4">
-      {/* Column Header */}
+
       <div className="flex items-center gap-3">
         <div className={`w-3 h-3 rounded-full ${column.color}`} />
         <h3 className="font-semibold">{column.name}</h3>
@@ -223,7 +229,7 @@ const RoadmapColumn = ({
         </span>
       </div>
 
-      {/* Cards Container */}
+
       <div ref={setNodeRef} className="bg-muted/10 rounded-xl p-2 min-h-[500px]">
         <SortableContext
           items={columnFeatures}
@@ -241,7 +247,7 @@ const RoadmapColumn = ({
           </div>
         </SortableContext>
 
-        {/* Add card button */}
+
         <button
           onClick={() => onAddClick(column.id)}
           className="w-full p-3 mt-3 rounded-xl border border-dashed border-border hover:border-primary hover:bg-primary/5 text-muted-foreground text-sm transition-colors flex items-center justify-center gap-2"
@@ -270,6 +276,13 @@ const RoadmapsPage = () => {
     priority: "Medium" as "Low" | "Medium" | "High",
     tags: "" as string,
   });
+  
+  // AI State
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<GeneratedRoadmapFeature[]>([]);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
 
   const [selectedWorkspace, setSelectedWorkspace] = useState<{
     id: string;
@@ -341,7 +354,6 @@ const RoadmapsPage = () => {
     })
   );
 
-  // Initialize or get roadmap for the workspace
   const initializeRoadmap = useCallback(
     async (workspaceId: string) => {
       if (!workspaceId || !user) {
@@ -349,7 +361,7 @@ const RoadmapsPage = () => {
       }
 
       try {
-        // Try to get existing roadmap
+
         const { data: existingRoadmap, error: fetchError } = await supabase
           .from("roadmaps")
           .select("id")
@@ -364,7 +376,7 @@ const RoadmapsPage = () => {
           return existingRoadmap.id;
         }
 
-        // Create new roadmap if it doesn't exist
+
         const { data: newRoadmap, error: createError } = await supabase
           .from("roadmaps")
           .insert({
@@ -395,7 +407,7 @@ const RoadmapsPage = () => {
     try {
       setLoading(true);
 
-      // First, ensure roadmap exists
+
       const rmId = await initializeRoadmap(selectedWorkspace.id);
       if (!rmId) {
         setFeatures([]);
@@ -405,7 +417,7 @@ const RoadmapsPage = () => {
 
       setRoadmapId(rmId);
 
-      // Query features by roadmap_id
+
       const { data, error } = await supabase
         .from("roadmap_features")
         .select("*")
@@ -451,7 +463,7 @@ const RoadmapsPage = () => {
         return;
       }
 
-      // Ensure roadmap exists
+
       let rmId = roadmapId;
       if (!rmId) {
         rmId = await initializeRoadmap(selectedWorkspace.id);
@@ -468,7 +480,7 @@ const RoadmapsPage = () => {
         .filter((tag) => tag.length > 0);
 
       if (editingId) {
-        // Update existing
+
         const { error } = await supabase
           .from("roadmap_features")
           .update({
@@ -484,7 +496,7 @@ const RoadmapsPage = () => {
         if (error) throw error;
         toast.success("Feature updated successfully");
       } else {
-        // Create new
+
         const maxPosition =
           features
             .filter((f) => f.status === formData.status)
@@ -553,6 +565,80 @@ const RoadmapsPage = () => {
     });
     setEditingId(null);
     setIsDialogOpen(false);
+  };
+
+  const handleAIGenerate = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error("Please enter a description for your project");
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const suggestions = await generateRoadmapSuggestions(aiPrompt);
+      setAiSuggestions(suggestions);
+
+      setSelectedSuggestions(new Set(suggestions.map((_, i) => i)));
+    } catch (error) {
+      toast.error("Failed to generate suggestions. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAcceptSuggestions = async () => {
+    if (selectedSuggestions.size === 0) {
+      toast.error("Please select at least one feature");
+      return;
+    }
+
+    if (!selectedWorkspace || !user) return;
+
+    setLoading(true);
+
+    try {
+      // Ensure roadmap exists
+      let rmId = roadmapId;
+      if (!rmId) {
+        rmId = await initializeRoadmap(selectedWorkspace.id);
+        if (!rmId) throw new Error("Could not initialize roadmap");
+        setRoadmapId(rmId);
+      }
+
+      const featuresToAdd = aiSuggestions.filter((_, i) => selectedSuggestions.has(i));
+
+      const currentFeatures = [...features]; // Snapshot
+      
+      const insertions = featuresToAdd.map(f => {
+     
+         return {
+            roadmap_id: rmId,
+            workspace_id: selectedWorkspace.id,
+            user_id: user.id,
+            title: f.title,
+            description: f.description,
+            status: f.status,
+            priority: f.priority,
+            tags: f.tags,
+            position: 999 // We'll just push them to end, simplified for batch
+         };
+      });
+
+      const { error } = await supabase.from("roadmap_features").insert(insertions);
+
+      if (error) throw error;
+
+      toast.success(`Added ${featuresToAdd.length} features to roadmap`);
+      setIsAIModalOpen(false);
+      setAiSuggestions([]);
+      setAiPrompt("");
+      fetchFeatures();
+
+    } catch (error) {
+      console.error("Error adding AI features:", error);
+      toast.error("Failed to add features");
+      setLoading(false);
+    }
   };
 
   // Drag Handlers
@@ -730,9 +816,14 @@ const RoadmapsPage = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" disabled>
-              <Wand2 className="w-4 h-4" />
-              <span className="hidden sm:inline ml-2">AI Suggest</span>
+            <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setIsAIModalOpen(true)}
+                className="border-primary/20 hover:bg-primary/5 text-primary"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              AI Suggest
             </Button>
             <Button
               variant="hero"
@@ -790,7 +881,7 @@ const RoadmapsPage = () => {
         )}
       </div>
 
-      {/* Add/Edit Feature Dialog */}
+
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -905,6 +996,127 @@ const RoadmapsPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isAIModalOpen} onOpenChange={setIsAIModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+               <Sparkles className="w-5 h-5 text-primary" />
+               Generate Roadmap with AI
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-6 py-4">
+             {aiSuggestions.length === 0 ? (
+                <div className="space-y-4">
+                   <div className="bg-primary/5 p-4 rounded-lg border border-primary/10">
+                      <h4 className="font-semibold text-primary mb-1">How it works</h4>
+                      <p className="text-sm text-muted-foreground">
+                         Describe your product, project, or goal. The AI will generate a structured roadmap with "Now", "Next", and "Later" items, complete with priorities and tags.
+                      </p>
+                   </div>
+                   
+                   <div className="space-y-2">
+                      <label className="text-sm font-medium">What are you building?</label>
+                      <Textarea 
+                        placeholder="e.g. A marketplace for freelance designers with portfolio reviews and payment processing..."
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        className="min-h-[120px] text-base"
+                      />
+                   </div>
+                </div>
+             ) : (
+                <div className="space-y-4">
+                   <div className="flex items-center justify-between">
+                      <h3 className="font-medium">Suggested Features</h3>
+                      <div className="text-sm text-muted-foreground">
+                         {selectedSuggestions.size} selected
+                      </div>
+                   </div>
+                   
+                   <div className="space-y-3">
+                      {aiSuggestions.map((feature, idx) => (
+                         <div 
+                           key={idx} 
+                           className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                              selectedSuggestions.has(idx) 
+                                ? "bg-primary/5 border-primary/30" 
+                                : "bg-card border-border hover:border-primary/20"
+                           }`}
+                           onClick={() => {
+                              const next = new Set(selectedSuggestions);
+                              if (next.has(idx)) next.delete(idx);
+                              else next.add(idx);
+                              setSelectedSuggestions(next);
+                           }}
+                         >
+                            <div className="flex items-start gap-3">
+                               <Checkbox 
+                                  checked={selectedSuggestions.has(idx)}
+                                  onCheckedChange={() => {}} // Handled by parent div
+                                  className="mt-1"
+                               />
+                               <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                     <span className="font-medium text-sm">{feature.title}</span>
+                                     <Badge variant="secondary" className="text-[10px] h-5">
+                                        {feature.status.toUpperCase()}
+                                     </Badge>
+                                     <Badge variant="outline" className="text-[10px] h-5">
+                                        {feature.priority}
+                                     </Badge>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">{feature.description}</p>
+                               </div>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+             )}
+          </div>
+
+          <div className="pt-4 border-t flex justify-end gap-3 sticky bottom-0 bg-background z-10">
+             {aiSuggestions.length === 0 ? (
+                <>
+                   <Button variant="ghost" onClick={() => setIsAIModalOpen(false)}>Cancel</Button>
+                   <Button variant="hero" onClick={handleAIGenerate} disabled={aiLoading || !aiPrompt.trim()}>
+                      {aiLoading ? (
+                        <>
+                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                           Generating...
+                        </>
+                      ) : (
+                        <>
+                           <Sparkles className="w-4 h-4 mr-2" />
+                           Generate Plan
+                        </>
+                      )}
+                   </Button>
+                </>
+             ) : (
+                <>
+                   <Button variant="ghost" onClick={() => {
+                      setAiSuggestions([]);
+                      setSelectedSuggestions(new Set());
+                   }}>Back</Button>
+                   <Button variant="hero" onClick={handleAcceptSuggestions} disabled={loading}>
+                      {loading ? (
+                         <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                         <>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Selected to Roadmap
+                         </>
+                      )}
+                   </Button>
+                </>
+             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </DashboardLayout>
   );
 };

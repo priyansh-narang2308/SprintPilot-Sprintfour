@@ -90,7 +90,7 @@ const PRDBuilderPage: React.FC = () => {
     setSelectedWorkspace(ws);
     if (ws) localStorage.setItem("current_workspace", JSON.stringify(ws));
     else localStorage.removeItem("current_workspace");
-    // refetch PRDs scoped to the workspace
+
     fetchPRDs();
   };
 
@@ -174,16 +174,15 @@ const PRDBuilderPage: React.FC = () => {
       const workspaceRaw = localStorage.getItem("current_workspace");
       const workspace = workspaceRaw ? JSON.parse(workspaceRaw) : null;
       if (editId) {
-        // update
+
         const payload: Record<string, unknown> = {
           title: editTitle,
           description: editDescription,
         };
-        // only include content if we have it
+
         if (typeof editContent !== "undefined") payload.content = editContent;
         await supabase.from("prds").update(payload).eq("id", editId);
       } else {
-        // insert new blank PRD
         const payload: Record<string, unknown> = {
           title: editTitle || "Untitled PRD",
           description: editDescription || null,
@@ -572,7 +571,7 @@ const PRDBuilderPage: React.FC = () => {
           </div>
         )}
 
-        {/* Edit / Create PRD modal (blank or edit existing) */}
+
         <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
           <DialogContent>
             <DialogHeader>
@@ -616,7 +615,6 @@ const PRDBuilderPage: React.FC = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Delete confirmation */}
         <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <DialogContent>
             <DialogHeader>

@@ -35,7 +35,6 @@ const SettingsPage = () => {
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
 
-  // API key state
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generatingKey, setGeneratingKey] = useState(false);
   const [showAvatarDialog, setShowAvatarDialog] = useState(false);
@@ -50,7 +49,7 @@ const SettingsPage = () => {
   );
 
   useEffect(() => {
-    // load appearance pref
+
     const stored = localStorage.getItem("appearance:dark");
     if (stored) setDarkMode(stored === "true");
   }, []);
@@ -83,7 +82,7 @@ const SettingsPage = () => {
         .limit(1)
         .single();
       if (error && (error as any).code !== "PGRST116") {
-        // ignore not found vs actual error
+
         console.error("fetch api key error", error);
       }
       if (data && (data as any).key) setApiKey((data as any).key as string);

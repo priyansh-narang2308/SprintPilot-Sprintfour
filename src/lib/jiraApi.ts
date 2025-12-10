@@ -1,8 +1,8 @@
 export interface JiraConfig {
-    domain: string; // e.g., "yourcompany.atlassian.net"
+    domain: string; 
     email: string;
     apiToken: string;
-    projectKey: string; // e.g., "PROJ"
+    projectKey: string; 
 }
 
 export interface JiraIssue {
@@ -41,7 +41,6 @@ const mapPriorityToJira = (priority: 'low' | 'medium' | 'high'): string => {
     return mapping[priority] || 'Medium';
 };
 
-// Map our status to Jira status (for initial creation, Jira defaults to "To Do")
 const mapStatusToJira = (status: string): string => {
     const mapping = {
         backlog: 'To Do',
@@ -52,7 +51,7 @@ const mapStatusToJira = (status: string): string => {
     return mapping[status as keyof typeof mapping] || 'To Do';
 };
 
-// Create a Jira issue
+
 export const createJiraIssue = async (
     config: JiraConfig,
     task: {
@@ -75,7 +74,7 @@ export const createJiraIssue = async (
             summary: task.title,
             description: task.description || undefined,
             issuetype: {
-                name: 'Task', // Default to Task, can be changed
+                name: 'Task', 
             },
             priority: {
                 name: mapPriorityToJira(task.priority),

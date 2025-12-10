@@ -497,7 +497,7 @@ const BacklogPage = () => {
       return
     }
 
-    // Get tasks to export (filtered tasks or all tasks based on current filter)
+
     const tasksToExport = filteredTasks.length > 0 ? filteredTasks : tasks
 
     if (tasksToExport.length === 0) {
@@ -512,16 +512,16 @@ const BacklogPage = () => {
     const results: Array<{ task: Task; success: boolean; jiraKey?: string; error?: string }> = []
 
     try {
-      // Test connection first
+
       const isValid = await testJiraConnection(jiraConfig)
       if (!isValid) {
         throw new Error("Jira connection failed. Please check your credentials.")
       }
 
-      // Save config
+
       localStorage.setItem('jira_config', JSON.stringify(jiraConfig))
 
-      // Export tasks one by one
+
       for (let i = 0; i < tasksToExport.length; i++) {
         const task = tasksToExport[i]
         setExportProgress({ current: i + 1, total: tasksToExport.length })
@@ -550,7 +550,7 @@ const BacklogPage = () => {
           })
         }
 
-        // Small delay to avoid rate limiting
+
         if (i < tasksToExport.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 500))
         }
@@ -1286,7 +1286,7 @@ const BacklogPage = () => {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Jira Configuration */}
+
             <div className="space-y-4 border-b pb-4">
               <h3 className="font-semibold text-sm">Jira Configuration</h3>
 
@@ -1384,7 +1384,7 @@ const BacklogPage = () => {
               </Button>
             </div>
 
-            {/* Export Section */}
+
             {exportResults.length === 0 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -1413,7 +1413,7 @@ const BacklogPage = () => {
               </div>
             )}
 
-            {/* Export Results */}
+
             {exportResults.length > 0 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
