@@ -536,7 +536,7 @@ const RoadmapsPage = () => {
     }
   };
 
-  /* Delete Confirmation State */
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [featureToDelete, setFeatureToDelete] = useState<RoadmapFeature | null>(null);
 
@@ -621,7 +621,7 @@ const RoadmapsPage = () => {
     setLoading(true);
 
     try {
-      // Ensure roadmap exists
+
       let rmId = roadmapId;
       if (!rmId) {
         rmId = await initializeRoadmap(selectedWorkspace.id);
@@ -631,7 +631,6 @@ const RoadmapsPage = () => {
 
       const featuresToAdd = aiSuggestions.filter((_, i) => selectedSuggestions.has(i));
 
-      const currentFeatures = [...features]; // Snapshot
       
       const insertions = featuresToAdd.map(f => {
      
@@ -644,7 +643,7 @@ const RoadmapsPage = () => {
             status: f.status,
             priority: f.priority,
             tags: f.tags,
-            position: 999 // We'll just push them to end, simplified for batch
+            position: 999 
          };
       });
 
@@ -664,7 +663,6 @@ const RoadmapsPage = () => {
       setLoading(false);
     }
   };
-
   // Drag Handlers
   const handleDragStart = (event: DragStartEvent) => {
     if (event.active.data.current?.type === "Feature") {
