@@ -11,6 +11,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@google/genai": "^1.31.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
@@ -41,7 +44,6 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@readme/markdown": "^11.8.0",
-  "marked": "^5.1.1",
     "@supabase/supabase-js": "^2.86.2",
     "@tanstack/react-query": "^5.90.12",
     "@tippyjs/react": "^4.2.6",
@@ -56,6 +58,7 @@
     "input-otp": "^1.4.2",
     "jspdf": "^3.0.4",
     "lucide-react": "^0.462.0",
+    "marked": "^5.1.2",
     "mime": "^4.1.0",
     "motion": "^12.23.25",
     "next-themes": "^0.3.0",
@@ -77,6 +80,7 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
+    "@types/marked": "^5.0.2",
     "@types/node": "^22.19.1",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
