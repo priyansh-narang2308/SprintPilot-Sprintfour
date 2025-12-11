@@ -12,6 +12,7 @@ import {
   generateRoadmapSuggestions, 
   type GeneratedRoadmapFeature 
 } from "../lib/geiminiApi";
+import { storage } from "../lib/storage";
 import { Checkbox } from "../components/ui/checkbox";
 import DashboardLayout from "../components/dashboard/dashboard-layout";
 import { Button } from "../components/ui/button";
@@ -525,6 +526,7 @@ const RoadmapsPage = () => {
         });
 
         if (error) throw error;
+        storage.logActivity("Added Roadmap Feature", formData.title);
         toast.success("Feature added successfully");
       }
 

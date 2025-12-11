@@ -35,6 +35,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 import { generatePersonaWithAI } from "../lib/ai-persona";
+import { storage } from "../lib/storage";
 
 type Persona = {
   id: number;
@@ -138,6 +139,7 @@ const PersonasPage = () => {
             .single();
           if (error) throw error;
           setPersonas((p) => [data, ...p]);
+          storage.logActivity("Created Persona", data.name);
           toast.success("Persona created");
         }
         resetForm();
@@ -234,6 +236,8 @@ const PersonasPage = () => {
       setFrustrations(generatedPersona.frustrations.join("\n"));
       setMotivations(generatedPersona.motivations.join("\n"));
       setBehaviors(generatedPersona.behaviors.join("\n"));
+
+      storage.logActivity("Generated Persona", generatedPersona.name);
 
       setIsAIDialogOpen(false);
       setAIPrompt("");

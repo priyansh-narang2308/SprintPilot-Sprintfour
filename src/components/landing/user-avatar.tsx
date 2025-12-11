@@ -33,14 +33,10 @@ const UserAvatar = () => {
         align="end"
         className="w-40 bg-background/95 backdrop-blur-lg shadow-xl border-border/40"
       >
-        <DropdownMenuItem asChild>
-          <Link to="/profile" className="cursor-pointer">
-            Profile
-          </Link>
-        </DropdownMenuItem>
+     
 
         <DropdownMenuItem asChild>
-          <Link to="/settings" className="cursor-pointer">
+          <Link to="/dashboard/settings" className="cursor-pointer">
             Settings
           </Link>
         </DropdownMenuItem>

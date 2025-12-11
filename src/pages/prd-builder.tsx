@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import DashboardLayout from "../components/dashboard/dashboard-layout";
 import { Button } from "../components/ui/button";
+import { storage } from "../lib/storage";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -190,6 +191,10 @@ const PRDBuilderPage: React.FC = () => {
         };
         if (workspace && workspace.id) payload.workspace_id = workspace.id;
         await supabase.from("prds").insert(payload);
+        storage.logActivity("Created PRD", (payload.title as string) || "Untitled");
+      }
+      if (editId) {
+        storage.logActivity("Updated PRD", editTitle);
       }
       setEditModalOpen(false);
       await fetchPRDs();
@@ -239,6 +244,7 @@ const PRDBuilderPage: React.FC = () => {
           .select("id,title,description,content,created_at")
           .single();
         if (error) throw error;
+        storage.logActivity("Generated PRD", title);
         setModalOpen(false);
         await fetchPRDs();
         setSelected(data as PRD);

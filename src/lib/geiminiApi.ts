@@ -4,16 +4,34 @@ const ai = new GoogleGenAI({
   apiKey: import.meta.env.VITE_GEMINI_API_KEY,
 });
 
-export const generateBlueprintResponse = async (userPrompt: string) => {
+export const generateBlueprintResponse = async (
+  input: string | { name: string; industry: string; role: string; stage: string }
+) => {
   try {
+    const userPrompt =
+      typeof input === "string"
+        ? input
+        : `Create a comprehensive project blueprint for a startup with the following details:
+           Name: ${input.name}
+           Industry: ${input.industry}
+           User Role: ${input.role}
+           Stage: ${input.stage}
+           
+           Please include:
+           1. Executive Summary
+           2. Core Features (MVP)
+           3. User Personas (Target Audience)
+           4. Technical Stack Recommendations (Frontend, Backend, Database)
+           5. First 30-Day Roadmap`;
+
     const result = await ai.models.generateContent({
       model: "gemini-2.0-flash-exp",
       contents: userPrompt,
       config: {
         systemInstruction: `You are an expert Blueprint Architect for SprintPilot. 
-        Your goal is to generate detailed, structured, and professional project blueprints based on the user's request.
+        Your goal is to generate detailed, structured, and professional project blueprints.
         
-        When a user asks for a blueprint (or any project advice), provide a response in the following Markdown format:
+        Provide the response in the following Markdown format:
         
         ## Project Name: [Creative Name]
         
@@ -34,7 +52,13 @@ export const generateBlueprintResponse = async (userPrompt: string) => {
         - Backend: [Suggestion]
         - Database: [Suggestion]
         
-        Keep the tone professional, encouraging, and productive. If the user's request is vague, ask clarifying questions but still provide a preliminary blueprint concept.`,
+        ### First 30-Day Roadmap
+        - Week 1: [Tasks]
+        - Week 2: [Tasks]
+        - Week 3: [Tasks]
+        - Week 4: [Tasks]
+        
+        Keep the tone professional, encouraging, and productive.`,
       },
     });
 

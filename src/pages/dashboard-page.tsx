@@ -22,72 +22,7 @@ import {
 } from "../components/ui/dialog";
 import { generateBlueprintResponse } from "../lib/geiminiApi";
 
-const projects = [
-  {
-    id: 1,
-    name: "Acme SaaS Platform",
-    description: "B2B project management tool",
-    progress: 75,
-    lastEdited: "2 hours ago",
-    modules: ["PRD", "Personas", "Roadmap"],
-  },
-  {
-    id: 2,
-    name: "FitTrack Mobile App",
-    description: "Consumer fitness tracking app",
-    progress: 40,
-    lastEdited: "1 day ago",
-    modules: ["PRD", "Journey Map"],
-  },
-  {
-    id: 3,
-    name: "EduLearn Marketplace",
-    description: "Online course marketplace",
-    progress: 90,
-    lastEdited: "3 days ago",
-    modules: ["PRD", "Personas", "Wireframes", "Roadmap"],
-  },
-];
-
-const insights = [
-  {
-    icon: TrendingUp,
-    title: "3 PRDs completed this week",
-    description: "You're 50% more productive than last week",
-    color: "bg-chart-4",
-  },
-  {
-    icon: Users,
-    title: "12 personas generated",
-    description: "Across all your projects",
-    color: "bg-chart-2",
-  },
-  {
-    icon: FileText,
-    title: "New template available",
-    description: "AI-powered competitive analysis",
-    color: "bg-chart-1",
-  },
-];
-
-const recentActivity = [
-  { action: "Updated PRD", project: "Acme SaaS Platform", time: "2 hours ago" },
-  {
-    action: "Created persona",
-    project: "FitTrack Mobile App",
-    time: "5 hours ago",
-  },
-  {
-    action: "Generated roadmap",
-    project: "EduLearn Marketplace",
-    time: "1 day ago",
-  },
-  {
-    action: "Exported to Jira",
-    project: "Acme SaaS Platform",
-    time: "2 days ago",
-  },
-];
+import { storage, type Project, type Activity } from "../lib/storage";
 
 const initialMessages: {
   id: number;
@@ -123,7 +58,24 @@ const Dashboard = () => {
   >(initialMessages);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [selectedBlueprint, setSelectedBlueprint] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setProjects(storage.getProjects());
+    setActivities(storage.getActivities());
+    
+    // Listen for storage events to update real-time across tabs/windows
+    const handleStorageChange = () => {
+        setProjects(storage.getProjects());
+        setActivities(storage.getActivities());
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
 
   const name =
     user?.user_metadata?.full_name ||
@@ -186,6 +138,28 @@ const Dashboard = () => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Calculate insights based on real data
+  const insights = [
+    {
+      icon: TrendingUp,
+      title: `${projects.length} Active Projects`,
+      description: "Total projects in your workspace",
+      color: "bg-chart-4",
+    },
+    {
+      icon: Users,
+      title: `${activities.filter(a => a.action.includes("Persona")).length} Personas Created`,
+      description: "Based on recent activity",
+      color: "bg-chart-2",
+    },
+    {
+      icon: FileText,
+      title: `${activities.filter(a => a.action.includes("PRD")).length} PRDs Generated`,
+      description: "Based on recent activity",
+      color: "bg-chart-1",
+    },
+  ];
+
   return (
     <DashboardLayout title="Dashboard">
       <div className="space-y-8">
@@ -198,7 +172,7 @@ const Dashboard = () => {
           </div>
 
           <Button variant="hero" asChild>
-            <Link to="/dashboard/new">
+            <Link to="/onboarding">
               <Plus className="w-4 h-4" />
               New Blueprint
             </Link>
@@ -232,83 +206,121 @@ const Dashboard = () => {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Your Projects</h2>
-              <Button variant="ghost" size="sm">
-                View all
-              </Button>
+              {projects.length > 0 && (
+                <Button variant="ghost" size="sm">
+                    View all
+                </Button>
+              )}
             </div>
             <div className="space-y-3">
-              {projects.map((project) => (
-                <div
-                  key={project.id}
-                  className="bg-card rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 className="font-semibold group-hover:text-primary transition-colors">
-                        {project.name}
-                      </h3>
-                      <p className="text-muted-foreground text-sm">
-                        {project.description}
-                      </p>
-                    </div>
-                    <button className="p-1.5 rounded-lg hover:bg-muted opacity-0 group-hover:opacity-100 transition-all">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-3 mb-3">
-                    {project.modules.map((module) => (
-                      <span
-                        key={module}
-                        className="px-2 py-1 rounded-lg bg-muted text-muted-foreground text-xs"
-                      >
-                        {module}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      <span>{project.lastEdited}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full gradient-primary rounded-full"
-                          style={{ width: `${project.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium">
-                        {project.progress}%
-                      </span>
-                    </div>
-                  </div>
+              {projects.length === 0 ? (
+                <div className="text-center py-10 bg-card rounded-2xl border border-border/50 border-dashed">
+                  <p className="text-muted-foreground mb-4">No projects yet.</p>
+                  <Button variant="outline" asChild>
+                     <Link to="/onboarding">Create your first Blueprint</Link>
+                  </Button>
                 </div>
-              ))}
+              ) : (
+                projects.map((project) => (
+                    <div
+                    key={project.id}
+                    onClick={() =>
+                        project.blueprintContent &&
+                        setSelectedBlueprint(project.blueprintContent)
+                    }
+                    className="bg-card rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer group transition-all"
+                    >
+                    <div className="flex items-start justify-between mb-3">
+                        <div>
+                        <h3 className="font-semibold group-hover:text-primary transition-colors">
+                            {project.name}
+                        </h3>
+                        <p className="text-muted-foreground text-sm">
+                            {project.description}
+                        </p>
+                        </div>
+                        <button className="p-1.5 rounded-lg hover:bg-muted opacity-0 group-hover:opacity-100 transition-all">
+                        <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-3 mb-3">
+                        {project.modules.map((module) => (
+                        <span
+                            key={module}
+                            className="px-2 py-1 rounded-lg bg-muted text-muted-foreground text-xs"
+                        >
+                            {module}
+                        </span>
+                        ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        <span>{project.lastEdited}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                        <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                            className="h-full gradient-primary rounded-full"
+                            style={{ width: `${project.progress}%` }}
+                            />
+                        </div>
+                        <span className="text-xs font-medium">
+                            {project.progress}%
+                        </span>
+                        </div>
+                    </div>
+                    </div>
+                ))
+              )}
             </div>
           </div>
 
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">Recent Activity</h2>
             <div className="bg-card rounded-2xl border border-border/50 divide-y divide-border/50">
-              {recentActivity.map((activity, index) => (
-                <div
-                  key={index}
-                  className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                >
-                  <p className="text-sm font-medium">{activity.action}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {activity.project}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {activity.time}
-                  </p>
-                </div>
-              ))}
+              {activities.length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground text-sm">
+                      No recent activity
+                  </div>
+              ) : (
+                activities.slice(0, 10).map((activity, index) => (
+                    <div
+                    key={index}
+                    className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                    <p className="text-sm font-medium">{activity.action}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        {activity.project}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {activity.time}
+                    </p>
+                    </div>
+                ))
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Blueprint Viewer Dialog */}
+      <Dialog
+        open={!!selectedBlueprint}
+        onOpenChange={(open) => !open && setSelectedBlueprint(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Project Blueprint</DialogTitle>
+          </DialogHeader>
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <div className="whitespace-pre-line">
+              {selectedBlueprint}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
         <DialogTrigger asChild>
@@ -421,5 +433,6 @@ const Dashboard = () => {
     </DashboardLayout>
   );
 };
+
 
 export default Dashboard;
