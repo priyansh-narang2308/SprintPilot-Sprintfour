@@ -1,5 +1,3 @@
-# SprintPilot
-
 <div align="center">
   <h1>SprintPilot</h1>
   <p><strong>The Ultimate Agile Product Management Workspace</strong></p>
