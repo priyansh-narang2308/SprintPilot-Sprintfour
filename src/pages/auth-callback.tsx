@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 import { Rocket } from "lucide-react";
 
@@ -11,22 +12,57 @@ const AuthCallback = () => {
   useEffect(() => {
     const processCallback = async () => {
       try {
+        // Supabase may return tokens in the URL hash (fragment) like
+        // #access_token=...&refresh_token=... or as query params.
+        // First, handle hash-based tokens (common for implicit redirect flows).
+        const hash = window.location.hash?.replace(/^#/, "");
+        if (hash) {
+          const params = Object.fromEntries(
+            hash
+              .split("&")
+              .map((pair) => pair.split("=").map(decodeURIComponent))
+          ) as Record<string, string>;
+
+          if (params.error) {
+            toast.error(
+              params.error_description ||
+                params.error ||
+                "Authentication failed"
+            );
+            setTimeout(() => navigate("/login", { replace: true }), 2000);
+            return;
+          }
+
+          // If we have an access token and refresh token, set session locally so
+          // the app's AuthProvider (which listens to auth state) can pick it up.
+          if (params.access_token) {
+            try {
+              await supabase.auth.setSession({
+                access_token: params.access_token,
+                refresh_token: params.refresh_token,
+              });
+              toast.success("Authentication successful!");
+              setTimeout(() => navigate("/dashboard", { replace: true }), 800);
+              return;
+            } catch (err) {
+              // Fall through to query-param handling if setSession fails
+              console.error("Failed to set session from hash:", err);
+            }
+          }
+        }
+
+        // Fallback: handle query param based responses (e.g., ?error=...)
         const error = searchParams.get("error");
         const errorDescription = searchParams.get("error_description");
 
         if (error) {
           toast.error(errorDescription || "Authentication failed");
-
-          setTimeout(() => {
-            navigate("/login", { replace: true });
-          }, 2000);
+          setTimeout(() => navigate("/login", { replace: true }), 2000);
           return;
         }
-        toast.success("Authentication successful!");
 
-        setTimeout(() => {
-          navigate("/dashboard", { replace: true });
-        }, 1000);
+        toast.success("Authentication successful!");
+        setTimeout(() => navigate("/dashboard", { replace: true }), 1000);
       } catch (err) {
         const errorMessage =
           err instanceof Error
