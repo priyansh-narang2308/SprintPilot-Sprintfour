@@ -1,8 +1,8 @@
-import React from 'react'
+
 
 const JourneyMapsPage = () => {
   return (
-    <div>JourneyMapsPage</div>
+    <div>Journey</div>
   )
 }
 
